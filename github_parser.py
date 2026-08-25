@@ -16,6 +16,7 @@ class Listing:
     location: str
     apply_url: str | None
     date_posted: str
+    terms: str = ""
 
 
 @dataclass(frozen=True)
@@ -170,6 +171,7 @@ def _parse_html_tables(content: str) -> tuple[list[Listing], int]:
                 location=_clean_cell(row[header["location"]][0]),
                 apply_url=extract_apply_url(synthetic_links or apply_cell[0]),
                 date_posted=_clean_cell(row[date_index][0]) if date_index is not None and date_index < len(row) else "",
+                terms=_clean_cell(row[header["terms"]][0]) if "terms" in header and header["terms"] < len(row) else "",
             ))
     return listings, skipped
 
@@ -275,6 +277,24 @@ class GitRepository:
             self._command(*clone_args)
         revision = f"refs/heads/{self.branch}" if self.branch else "HEAD"
         return self._command("rev-parse", revision, cwd=self.mirror).stdout.strip()
+
+    def ensure_full_history(self) -> None:
+        shallow = self._command("rev-parse", "--is-shallow-repository", cwd=self.mirror).stdout.strip() == "true"
+        if shallow:
+            self._command("fetch", "--unshallow", "--filter=blob:none", "origin", cwd=self.mirror)
+
+    def daily_commits(self, path: str, start: str, end: str) -> list[str]:
+        result = self._command(
+            "log", "--reverse", "--format=%H%x09%cI", f"--since={start}", f"--until={end}",
+            "HEAD", "--", path, cwd=self.mirror,
+        )
+        by_day: dict[str, str] = {}
+        for line in result.stdout.splitlines():
+            if "\t" not in line:
+                continue
+            sha, committed_at = line.split("\t", 1)
+            by_day[committed_at[:10]] = sha
+        return list(by_day.values())
 
     def is_ancestor(self, older: str, newer: str) -> bool:
         result = self._command("merge-base", "--is-ancestor", older, newer, cwd=self.mirror, check=False)

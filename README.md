@@ -6,6 +6,8 @@ The initial configuration scans the Canadian Tech Internships repository and the
 
 The Canadian source replays every relevant commit. Simplify's bot-generated repository has tens of thousands of README commits and already preserves closed listings in dedicated files, so it uses `history_mode: "snapshot"`: all configured catalogs are scanned at the latest `dev` commit on first run and whenever that branch changes. This avoids millions of duplicate observations while retaining active, inactive, off-season, and archived listings.
 
+`--winter-history` performs a separate, idempotent scan of one daily `README-Off-Season.md` snapshot from August through October 2025. It only accepts rows explicitly tagged `Winter 2026`, and adds that evidence to each matching company's exported `recruiting_history` array.
+
 ## Setup
 
 Python 3 and the `git` command are required. There are currently no third-party Python packages.
@@ -30,9 +32,12 @@ python main.py
 
 # Write the compact downstream catalog
 python main.py --export
+
+# Mine the completed 2025 recruiting window for tagged Winter 2026 roles
+python main.py --winter-history
 ```
 
-The reusable blob-filtered bare Git clones are stored in `.repo-cache/`, the database is `companies.db`, and export output is `companies.json`. The clones retain complete commit history while downloading repository-file content only when needed. A rewritten upstream history automatically causes a safe full upsert scan.
+The reusable blob-filtered bare Git clones are stored in `.repo-cache/`, the database is `companies.db`, and export output is `companies.json`. Snapshot sources use shallow clones until a targeted historical command needs older commits. A rewritten upstream history automatically causes a safe full upsert scan.
 
 To add another source, append an entry containing `repo` and `files` to `REPOSITORIES` in `config.py`; no parser changes are needed.
 

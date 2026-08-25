@@ -81,6 +81,57 @@ def process_repository(db: Database, repo_config: dict, full: bool, token: str |
     return stats
 
 
+def process_historical_windows(db: Database, repo_config: dict, full: bool, token: str | None) -> RunStats:
+    stats = RunStats()
+    slug = repo_config["repo"]
+    for window in repo_config.get("historical_windows", []):
+        state_key = f"history:{slug}:{window['name']}"
+        if db.get_sync_head(state_key) and not full:
+            print(f"Historical window already scanned: {window['name']}")
+            continue
+        print(f"\nScanning {window['term']} history from {window['start'][:10]} to {window['end'][:10]}")
+        git_repo = GitRepository(
+            slug, [window["file"]], REPO_CACHE_DIR, token, GIT_TIMEOUT_SECONDS,
+            branch=repo_config.get("branch"), shallow=False,
+        )
+        head = git_repo.prepare()
+        git_repo.ensure_full_history()
+        commits = git_repo.daily_commits(window["file"], window["start"], window["end"])
+        stats.commits += len(commits)
+        companies_before = db.company_ids()
+        try:
+            for index, sha in enumerate(commits, start=1):
+                if index % 25 == 0:
+                    print(f"  Scanned {index}/{len(commits)} daily snapshots...")
+                for document in git_repo.documents_at(sha, all_files=True):
+                    listings, skipped = parse_markdown_tables(document.content)
+                    stats.skipped += skipped
+                    for listing in listings:
+                        if listing.terms.casefold() != window["term"].casefold() or not listing.apply_url:
+                            continue
+                        stats.rows += 1
+                        ats = parse_ats(listing.apply_url, listing.company)
+                        if not ats:
+                            stats.skipped += 1
+                            continue
+                        company_id, board_id, company_created, board_created = db.record_listing(
+                            listing, ats, slug, document.path, sha, document.committed_at
+                        )
+                        db.record_recruiting_history(
+                            company_id, board_id, window["term"], slug, sha, document.committed_at
+                        )
+                        if company_created and len(stats.new_names) < 5:
+                            stats.new_names.append(listing.company)
+                        if board_created:
+                            stats.new_board_ids.add(board_id)
+            db.finish_sync(state_key, head)
+            stats.new_ids.update(db.company_ids() - companies_before)
+        except Exception:
+            db.rollback()
+            raise
+    return stats
+
+
 def print_summary(db: Database, stats: RunStats) -> None:
     counts = db.ats_counts()
     print(f"\nCommits scanned: {stats.commits:,}")
@@ -101,6 +152,7 @@ def main() -> int:
     parser = ArgumentParser(description="Discover company ATS configurations from internship repository history.")
     parser.add_argument("--full", action="store_true", help="Rescan all configured history using idempotent upserts.")
     parser.add_argument("--export", action="store_true", help="Export the current company catalog to companies.json.")
+    parser.add_argument("--winter-history", action="store_true", help="Mine configured completed Winter recruiting windows.")
     args = parser.parse_args()
 
     load_dotenv(BASE_DIR / ".env")
@@ -126,6 +178,14 @@ def main() -> int:
             combined.new_board_ids.update(stats.new_board_ids)
             combined.updated_board_ids.update(stats.updated_board_ids)
             combined.new_names.extend(stats.new_names[: max(0, 5 - len(combined.new_names))])
+            if args.winter_history:
+                history = process_historical_windows(db, repo_config, args.full, token)
+                combined.commits += history.commits
+                combined.rows += history.rows
+                combined.skipped += history.skipped
+                combined.new_ids.update(history.new_ids)
+                combined.new_board_ids.update(history.new_board_ids)
+                combined.new_names.extend(history.new_names[: max(0, 5 - len(combined.new_names))])
         combined.updated_ids.difference_update(combined.new_ids)
         print_summary(db, combined)
         return 0

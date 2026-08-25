@@ -19,6 +19,15 @@ REPOSITORIES = [
         # This bot-generated repository has tens of thousands of commits and
         # maintains closed listings in dedicated current files.
         "history_mode": "snapshot",
+        "historical_windows": [
+            {
+                "name": "winter-2026-from-2025",
+                "file": "README-Off-Season.md",
+                "start": "2025-08-01T00:00:00Z",
+                "end": "2025-10-31T23:59:59Z",
+                "term": "Winter 2026",
+            }
+        ],
         "files": [
             "README.md",
             "README-Inactive.md",

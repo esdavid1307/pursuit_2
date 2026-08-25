@@ -35,6 +35,12 @@ CREATE TABLE IF NOT EXISTS job_observations (
 CREATE TABLE IF NOT EXISTS sync_state (
  source_repo TEXT PRIMARY KEY, last_processed_commit TEXT NOT NULL,
  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS recruiting_history (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+ ats_board_id INTEGER NOT NULL REFERENCES ats_boards(id) ON DELETE CASCADE, term TEXT NOT NULL,
+ source_repo TEXT NOT NULL, first_seen_commit TEXT NOT NULL, last_seen_commit TEXT NOT NULL,
+ first_seen_at TEXT NOT NULL, last_seen_at TEXT NOT NULL,
+ UNIQUE(company_id, ats_board_id, term, source_repo));
 CREATE INDEX IF NOT EXISTS idx_boards_company ON ats_boards(company_id);
 CREATE INDEX IF NOT EXISTS idx_boards_ats ON ats_boards(ats);
 CREATE INDEX IF NOT EXISTS idx_observations_company ON job_observations(company_id);
@@ -178,6 +184,19 @@ class Database:
         )
         self.connection.commit()
 
+    def record_recruiting_history(self, company_id: int, board_id: int, term: str, repo: str, sha: str, seen_at: str) -> None:
+        self.connection.execute(
+            """INSERT INTO recruiting_history
+               (company_id, ats_board_id, term, source_repo, first_seen_commit, last_seen_commit, first_seen_at, last_seen_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(company_id, ats_board_id, term, source_repo) DO UPDATE SET
+                first_seen_commit=CASE WHEN excluded.first_seen_at < first_seen_at THEN excluded.first_seen_commit ELSE first_seen_commit END,
+                first_seen_at=MIN(first_seen_at, excluded.first_seen_at),
+                last_seen_commit=CASE WHEN excluded.last_seen_at > last_seen_at THEN excluded.last_seen_commit ELSE last_seen_commit END,
+                last_seen_at=MAX(last_seen_at, excluded.last_seen_at)""",
+            (company_id, board_id, term, repo, sha, sha, seen_at, seen_at),
+        )
+
     def rollback(self) -> None:
         self.connection.rollback()
 
@@ -205,7 +224,10 @@ class Database:
                    ORDER BY ats_provider_known DESC, ats, ats_host, coalesce(ats_site, '')""",
                 (company["id"],),
             ).fetchall()
-            data.append({"company": company["company_name"], "ats_boards": [
+            terms = [row[0] for row in self.connection.execute(
+                "SELECT DISTINCT term FROM recruiting_history WHERE company_id=? ORDER BY term", (company["id"],)
+            )]
+            data.append({"company": company["company_name"], "recruiting_history": terms, "ats_boards": [
                 {"ats": board["ats"], "ats_provider_known": bool(board["ats_provider_known"]),
                  "ats_identifier": board["ats_identifier"], "ats_host": board["ats_host"],
                  "ats_site": board["ats_site"], "original_job_url": board["original_job_url"]}

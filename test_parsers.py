@@ -32,9 +32,9 @@ class MarkdownTests(unittest.TestCase):
 
     def test_simplify_html_table_uses_employer_link_and_inheritance(self):
         html = """
-<table><thead><tr><th>Company</th><th>Role</th><th>Location</th><th>Application</th><th>Age</th></tr></thead><tbody>
-<tr><td><strong><a href="https://simplify.jobs/c/Sage">🔥 Sage</a></strong></td><td>Software Intern</td><td>NYC<br>Boston</td><td><a href="https://job-boards.greenhouse.io/sage/jobs/123"><img src="apply.png"></a> <a href="https://simplify.jobs/p/secondary">Simplify</a></td><td>2d</td></tr>
-<tr><td>↳</td><td>Backend Intern</td><td>NYC</td><td><a href="https://job-boards.greenhouse.io/sage/jobs/456">Apply</a></td><td>1d</td></tr>
+<table><thead><tr><th>Company</th><th>Role</th><th>Location</th><th>Terms</th><th>Application</th><th>Age</th></tr></thead><tbody>
+<tr><td><strong><a href="https://simplify.jobs/c/Sage">🔥 Sage</a></strong></td><td>Software Intern</td><td>NYC<br>Boston</td><td>Winter 2026</td><td><a href="https://job-boards.greenhouse.io/sage/jobs/123"><img src="apply.png"></a> <a href="https://simplify.jobs/p/secondary">Simplify</a></td><td>2d</td></tr>
+<tr><td>↳</td><td>Backend Intern</td><td>NYC</td><td>Winter 2026</td><td><a href="https://job-boards.greenhouse.io/sage/jobs/456">Apply</a></td><td>1d</td></tr>
 </tbody></table>
 """
         rows, skipped = parse_markdown_tables(html)
@@ -44,6 +44,7 @@ class MarkdownTests(unittest.TestCase):
         self.assertEqual("NYC Boston", rows[0].location)
         self.assertEqual("https://job-boards.greenhouse.io/sage/jobs/123", rows[0].apply_url)
         self.assertEqual("2d", rows[0].date_posted)
+        self.assertEqual("Winter 2026", rows[0].terms)
         self.assertEqual(0, skipped)
 
 
@@ -102,6 +103,7 @@ class DatabaseTests(unittest.TestCase):
             first_id, first_board, created, board_created = db.record_listing(listing, ats, "owner/repo", "README.md", "a", "2026-01-01T00:00:00Z")
             better = Listing("Royal Bank of Canada", "Intern 2", "Toronto", "https://jobs.lever.co/acme/two", "Aug 2")
             second_id, second_board, created_again, board_created_again = db.record_listing(better, parse_ats(better.apply_url, better.company), "owner/repo", "README.md", "b", "2026-01-02T00:00:00Z")
+            db.record_recruiting_history(second_id, second_board, "Winter 2026", "owner/repo", "b", "2026-01-02T00:00:00Z")
             db.finish_sync("owner/repo", "b")
             self.assertEqual(first_id, second_id)
             self.assertEqual(first_board, second_board)
@@ -116,6 +118,7 @@ class DatabaseTests(unittest.TestCase):
             self.assertEqual("Royal Bank of Canada", data[0]["company"])
             self.assertEqual("lever", data[0]["ats_boards"][0]["ats"])
             self.assertTrue(data[0]["ats_boards"][0]["ats_provider_known"])
+            self.assertEqual(["Winter 2026"], data[0]["recruiting_history"])
             db.close()
 
     def test_shared_board_merges_company_aliases(self):
