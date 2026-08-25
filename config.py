@@ -21,10 +21,10 @@ REPOSITORIES = [
         "history_mode": "snapshot",
         "historical_windows": [
             {
-                "name": "winter-2026-from-2025",
+                "name": "winter-2026-july-2025-february-2026",
                 "file": "README-Off-Season.md",
-                "start": "2025-08-01T00:00:00Z",
-                "end": "2025-10-31T23:59:59Z",
+                "start": "2025-07-01T00:00:00Z",
+                "end": "2026-02-28T23:59:59Z",
                 "term": "Winter 2026",
             }
         ],

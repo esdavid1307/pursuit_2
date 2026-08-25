@@ -101,7 +101,7 @@ class DatabaseTests(unittest.TestCase):
             listing = Listing("RBC", "Intern", "Toronto", "https://jobs.lever.co/acme/one", "Aug 1")
             ats = parse_ats(listing.apply_url, listing.company)
             first_id, first_board, created, board_created = db.record_listing(listing, ats, "owner/repo", "README.md", "a", "2026-01-01T00:00:00Z")
-            better = Listing("Royal Bank of Canada", "Intern 2", "Toronto", "https://jobs.lever.co/acme/two", "Aug 2")
+            better = Listing("Royal Bank of Canada", "Intern 2", "Toronto", "https://jobs.lever.co/acme/two", "Aug 2", "Winter 2026")
             second_id, second_board, created_again, board_created_again = db.record_listing(better, parse_ats(better.apply_url, better.company), "owner/repo", "README.md", "b", "2026-01-02T00:00:00Z")
             db.record_recruiting_history(second_id, second_board, "Winter 2026", "owner/repo", "b", "2026-01-02T00:00:00Z")
             db.finish_sync("owner/repo", "b")
@@ -119,6 +119,8 @@ class DatabaseTests(unittest.TestCase):
             self.assertEqual("lever", data[0]["ats_boards"][0]["ats"])
             self.assertTrue(data[0]["ats_boards"][0]["ats_provider_known"])
             self.assertEqual(["Winter 2026"], data[0]["recruiting_history"])
+            terms = db.connection.execute("SELECT terms FROM job_observations WHERE commit_sha='b'").fetchone()[0]
+            self.assertEqual("Winter 2026", terms)
             db.close()
 
     def test_shared_board_merges_company_aliases(self):

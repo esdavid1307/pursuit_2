@@ -6,7 +6,7 @@ The initial configuration scans the Canadian Tech Internships repository and the
 
 The Canadian source replays every relevant commit. Simplify's bot-generated repository has tens of thousands of README commits and already preserves closed listings in dedicated files, so it uses `history_mode: "snapshot"`: all configured catalogs are scanned at the latest `dev` commit on first run and whenever that branch changes. This avoids millions of duplicate observations while retaining active, inactive, off-season, and archived listings.
 
-`--winter-history` performs a separate, idempotent scan of one daily `README-Off-Season.md` snapshot from August through October 2025. It only accepts rows explicitly tagged `Winter 2026`, and adds that evidence to each matching company's exported `recruiting_history` array.
+`--winter-history` performs a separate, idempotent scan of one daily `README-Off-Season.md` snapshot from July 1, 2025 through February 28, 2026. It only accepts rows explicitly tagged `Winter 2026`, and adds that evidence to each matching company's exported `recruiting_history` array.
 
 ## Setup
 
@@ -33,7 +33,7 @@ python main.py
 # Write the compact downstream catalog
 python main.py --export
 
-# Mine the completed 2025 recruiting window for tagged Winter 2026 roles
+# Mine the completed July 2025-February 2026 cycle for tagged Winter 2026 roles
 python main.py --winter-history
 ```
 
@@ -41,4 +41,4 @@ The reusable blob-filtered bare Git clones are stored in `.repo-cache/`, the dat
 
 To add another source, append an entry containing `repo` and `files` to `REPOSITORIES` in `config.py`; no parser changes are needed.
 
-The database separates canonical companies, their monitorable ATS boards, per-repository discovery provenance, raw job observations, and incremental sync checkpoints. `companies.json` contains one object per company with an `ats_boards` array and an explicit `ats_provider_known` tag. Unknown job boards are grouped by normalized company name and host, while every individual URL remains available in `job_observations`. Companies are never deleted merely because a listing disappears.
+The database separates canonical companies, their monitorable ATS boards, per-repository discovery provenance, raw job observations, and incremental sync checkpoints. Each observation retains the source table's explicit `terms` value when available. `companies.json` contains one object per company with an `ats_boards` array, recruiting history, and an explicit `ats_provider_known` tag. Unknown job boards are grouped by normalized company name and host, while every individual URL remains available in `job_observations`. Companies are never deleted merely because a listing disappears.

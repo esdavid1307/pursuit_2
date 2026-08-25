@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS company_sources (
 CREATE TABLE IF NOT EXISTS job_observations (
  id INTEGER PRIMARY KEY AUTOINCREMENT, company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
  ats_board_id INTEGER NOT NULL REFERENCES ats_boards(id) ON DELETE CASCADE, company_name_raw TEXT NOT NULL,
- role TEXT, location TEXT, job_url TEXT NOT NULL, date_posted TEXT, source_repo TEXT NOT NULL,
+ role TEXT, location TEXT, job_url TEXT NOT NULL, date_posted TEXT, terms TEXT NOT NULL DEFAULT '', source_repo TEXT NOT NULL,
  source_file TEXT NOT NULL, commit_sha TEXT NOT NULL, observed_at TEXT NOT NULL,
  UNIQUE(job_url, source_repo, commit_sha));
 CREATE TABLE IF NOT EXISTS sync_state (
@@ -61,6 +61,9 @@ class Database:
         if "normalized_name" not in columns:
             self.connection.close()
             raise RuntimeError("Legacy database detected; move companies.db aside and run a new --full scan.")
+        observation_columns = {row[1] for row in self.connection.execute("PRAGMA table_info(job_observations)")}
+        if "terms" not in observation_columns:
+            self.connection.execute("ALTER TABLE job_observations ADD COLUMN terms TEXT NOT NULL DEFAULT ''")
         self.connection.commit()
 
     def close(self) -> None:
@@ -168,11 +171,13 @@ class Database:
             (company_id, repo, sha, sha, seen_at, seen_at),
         )
         self.connection.execute(
-            """INSERT OR IGNORE INTO job_observations
-               (company_id, ats_board_id, company_name_raw, role, location, job_url, date_posted,
-                source_repo, source_file, commit_sha, observed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO job_observations
+               (company_id, ats_board_id, company_name_raw, role, location, job_url, date_posted, terms,
+                source_repo, source_file, commit_sha, observed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(job_url, source_repo, commit_sha) DO UPDATE SET
+                terms=CASE WHEN excluded.terms != '' THEN excluded.terms ELSE terms END""",
             (company_id, board_id, listing.company, listing.role, listing.location, ats.original_job_url,
-             listing.date_posted, repo, source_file, sha, seen_at),
+             listing.date_posted, listing.terms, repo, source_file, sha, seen_at),
         )
         return company_id, board_id, company_created, board_created
 
