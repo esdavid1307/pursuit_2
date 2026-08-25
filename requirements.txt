@@ -1,0 +1,2 @@
+# No third-party Python packages are required; Git history is read with the Git CLI.
+

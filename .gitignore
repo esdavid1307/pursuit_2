@@ -1,0 +1,9 @@
+.env
+.venv/
+__pycache__/
+*.py[cod]
+.repo-cache/
+companies.db
+companies.db-journal
+companies.json
+
