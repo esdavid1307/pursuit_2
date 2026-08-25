@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from html import unescape
+from html.parser import HTMLParser
 from pathlib import Path
 import os
 import re
@@ -67,7 +68,13 @@ def extract_apply_url(cell: str) -> str | None:
     markdown_urls = re.findall(r"\]\(\s*(https?://[^\s)]+)", cell, flags=re.IGNORECASE)
     html_urls = re.findall(r"href\s*=\s*[\"'](https?://[^\"']+)", cell, flags=re.IGNORECASE)
     plain_urls = re.findall(r"https?://[^\s<>\])\"']+", cell, flags=re.IGNORECASE)
-    candidates = markdown_urls + html_urls + plain_urls
+    if html_urls:
+        for url in html_urls:
+            cleaned = unescape(url).strip()
+            host = re.sub(r"^www\.", "", re.sub(r"^https?://", "", cleaned, flags=re.IGNORECASE).split("/", 1)[0].lower())
+            if host != "simplify.jobs" and "i.imgur.com" not in host and "shields.io" not in host:
+                return cleaned
+    candidates = markdown_urls + plain_urls
     for url in reversed(candidates):
         cleaned = unescape(url).strip()
         if "shields.io" not in cleaned.lower():
@@ -75,9 +82,100 @@ def extract_apply_url(cell: str) -> str | None:
     return None
 
 
-def parse_markdown_tables(content: str) -> tuple[list[Listing], int]:
+def _clean_company(value: str) -> str:
+    value = _clean_cell(value)
+    return re.sub(r"^(?:🔥|🛂|🇺🇸|🎓|🔒)\s*", "", value).strip()
+
+
+class _HTMLTableParser(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.tables: list[list[list[tuple[str, list[str]]]]] = []
+        self.table: list[list[tuple[str, list[str]]]] | None = None
+        self.row: list[tuple[str, list[str]]] | None = None
+        self.cell_text: list[str] | None = None
+        self.cell_links: list[str] | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag = tag.lower()
+        if tag == "table":
+            self.table = []
+        elif tag == "tr" and self.table is not None:
+            self.row = []
+        elif tag in {"td", "th"} and self.row is not None:
+            self.cell_text, self.cell_links = [], []
+        elif tag == "a" and self.cell_links is not None:
+            href = dict(attrs).get("href")
+            if href:
+                self.cell_links.append(href)
+        elif tag == "br" and self.cell_text is not None:
+            self.cell_text.append(" ")
+
+    def handle_data(self, data: str) -> None:
+        if self.cell_text is not None:
+            self.cell_text.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if tag in {"td", "th"} and self.row is not None and self.cell_text is not None:
+            self.row.append(("".join(self.cell_text), list(self.cell_links or [])))
+            self.cell_text = self.cell_links = None
+        elif tag == "tr" and self.table is not None and self.row is not None:
+            self.table.append(self.row)
+            self.row = None
+        elif tag == "table" and self.table is not None:
+            self.tables.append(self.table)
+            self.table = None
+
+
+def _parse_html_tables(content: str) -> tuple[list[Listing], int]:
+    parser = _HTMLTableParser()
+    parser.feed(content)
     listings: list[Listing] = []
     skipped = 0
+    for table in parser.tables:
+        if not table:
+            continue
+        header_keys = [_header_key(cell[0]) for cell in table[0]]
+        aliases = {"application": "apply", "age": "dateposted"}
+        header_keys = [aliases.get(key, key) for key in header_keys]
+        if not {"company", "role", "location", "apply"}.issubset(header_keys):
+            continue
+        header = {key: index for index, key in enumerate(header_keys) if key}
+        current_company: str | None = None
+        for row in table[1:]:
+            needed = max(header[name] for name in ("company", "role", "location", "apply"))
+            if len(row) <= needed:
+                skipped += 1
+                continue
+            raw_company = _clean_company(row[header["company"]][0])
+            if raw_company == "↳":
+                if not current_company:
+                    skipped += 1
+                    continue
+                company = current_company
+            else:
+                company = raw_company
+                if company:
+                    current_company = company
+            if not company:
+                skipped += 1
+                continue
+            apply_cell = row[header["apply"]]
+            synthetic_links = " ".join(f'href="{url}"' for url in apply_cell[1])
+            date_index = header.get("dateposted")
+            listings.append(Listing(
+                company=company,
+                role=_clean_cell(row[header["role"]][0]),
+                location=_clean_cell(row[header["location"]][0]),
+                apply_url=extract_apply_url(synthetic_links or apply_cell[0]),
+                date_posted=_clean_cell(row[date_index][0]) if date_index is not None and date_index < len(row) else "",
+            ))
+    return listings, skipped
+
+
+def parse_markdown_tables(content: str) -> tuple[list[Listing], int]:
+    listings, skipped = _parse_html_tables(content)
     header: dict[str, int] | None = None
     current_company: str | None = None
 
@@ -100,7 +198,7 @@ def parse_markdown_tables(content: str) -> tuple[list[Listing], int]:
         if needed < 0 or len(cells) <= needed:
             skipped += 1
             continue
-        raw_company = _clean_cell(cells[header["company"]])
+        raw_company = _clean_company(cells[header["company"]])
         if raw_company == "↳":
             if not current_company:
                 skipped += 1
@@ -128,13 +226,15 @@ def parse_markdown_tables(content: str) -> tuple[list[Listing], int]:
 
 
 class GitRepository:
-    def __init__(self, slug: str, files: list[str], cache_root: Path, token: str | None, timeout: int = 180):
+    def __init__(self, slug: str, files: list[str], cache_root: Path, token: str | None, timeout: int = 180, branch: str | None = None, shallow: bool = False):
         self.slug = slug
         self.files = files
         self.mirror = cache_root / f"{slug.replace('/', '__')}.git"
         self.remote_url = f"https://github.com/{slug}.git"
         self.token = token
         self.timeout = timeout
+        self.branch = branch
+        self.shallow = shallow
 
     def _command(self, *args: str, cwd: Path | None = None, check: bool = True) -> subprocess.CompletedProcess[str]:
         env = os.environ.copy()
@@ -154,10 +254,27 @@ class GitRepository:
     def prepare(self) -> str:
         self.mirror.parent.mkdir(parents=True, exist_ok=True)
         if self.mirror.exists():
-            self._command("fetch", "--prune", "origin", cwd=self.mirror)
+            if self.branch:
+                revision = f"refs/heads/{self.branch}"
+                local_head = self._command("rev-parse", revision, cwd=self.mirror).stdout.strip()
+                advertised = self._command("ls-remote", "--heads", "origin", revision, cwd=self.mirror).stdout.split()
+                if advertised and advertised[0] == local_head:
+                    return local_head
+            fetch_args = ["fetch", "--prune", "--filter=blob:none"]
+            if self.shallow:
+                fetch_args.extend(["--depth", "1"])
+            fetch_args.append("origin")
+            self._command(*fetch_args, cwd=self.mirror)
         else:
-            self._command("clone", "--mirror", self.remote_url, str(self.mirror))
-        return self._command("rev-parse", "HEAD", cwd=self.mirror).stdout.strip()
+            clone_args = ["clone", "--bare", "--filter=blob:none"]
+            if self.shallow:
+                clone_args.extend(["--depth", "1"])
+            if self.branch:
+                clone_args.extend(["--single-branch", "--branch", self.branch])
+            clone_args.extend([self.remote_url, str(self.mirror)])
+            self._command(*clone_args)
+        revision = f"refs/heads/{self.branch}" if self.branch else "HEAD"
+        return self._command("rev-parse", revision, cwd=self.mirror).stdout.strip()
 
     def is_ancestor(self, older: str, newer: str) -> bool:
         result = self._command("merge-base", "--is-ancestor", older, newer, cwd=self.mirror, check=False)
@@ -168,12 +285,15 @@ class GitRepository:
         result = self._command("rev-list", "--reverse", revision, "--", *self.files, cwd=self.mirror)
         return [line for line in result.stdout.splitlines() if line]
 
-    def documents_at(self, sha: str) -> list[HistoricalDocument]:
-        changed = self._command(
-            "diff-tree", "--root", "--no-commit-id", "--name-only", "-r", "-m", sha,
-            cwd=self.mirror,
-        ).stdout.splitlines()
-        selected = [path for path in self.files if path in set(changed)]
+    def documents_at(self, sha: str, all_files: bool = False) -> list[HistoricalDocument]:
+        if all_files:
+            selected = self.files
+        else:
+            changed = self._command(
+                "diff-tree", "--root", "--no-commit-id", "--name-only", "-r", "-m", sha,
+                cwd=self.mirror,
+            ).stdout.splitlines()
+            selected = [path for path in self.files if path in set(changed)]
         committed_at = self._command("show", "-s", "--format=%cI", sha, cwd=self.mirror).stdout.strip()
         documents: list[HistoricalDocument] = []
         for path in selected:

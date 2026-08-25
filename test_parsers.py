@@ -30,6 +30,22 @@ class MarkdownTests(unittest.TestCase):
         self.assertEqual([], rows)
         self.assertEqual(1, skipped)
 
+    def test_simplify_html_table_uses_employer_link_and_inheritance(self):
+        html = """
+<table><thead><tr><th>Company</th><th>Role</th><th>Location</th><th>Application</th><th>Age</th></tr></thead><tbody>
+<tr><td><strong><a href="https://simplify.jobs/c/Sage">🔥 Sage</a></strong></td><td>Software Intern</td><td>NYC<br>Boston</td><td><a href="https://job-boards.greenhouse.io/sage/jobs/123"><img src="apply.png"></a> <a href="https://simplify.jobs/p/secondary">Simplify</a></td><td>2d</td></tr>
+<tr><td>↳</td><td>Backend Intern</td><td>NYC</td><td><a href="https://job-boards.greenhouse.io/sage/jobs/456">Apply</a></td><td>1d</td></tr>
+</tbody></table>
+"""
+        rows, skipped = parse_markdown_tables(html)
+        self.assertEqual(2, len(rows))
+        self.assertEqual("Sage", rows[0].company)
+        self.assertEqual("Sage", rows[1].company)
+        self.assertEqual("NYC Boston", rows[0].location)
+        self.assertEqual("https://job-boards.greenhouse.io/sage/jobs/123", rows[0].apply_url)
+        self.assertEqual("2d", rows[0].date_posted)
+        self.assertEqual(0, skipped)
+
 
 class ATSTests(unittest.TestCase):
     def test_supported_systems(self):

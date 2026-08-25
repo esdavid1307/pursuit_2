@@ -28,20 +28,28 @@ class RunStats:
 def process_repository(db: Database, repo_config: dict, full: bool, token: str | None) -> RunStats:
     slug = repo_config["repo"]
     print(f"\nProcessing {slug}")
-    git_repo = GitRepository(slug, repo_config["files"], REPO_CACHE_DIR, token, GIT_TIMEOUT_SECONDS)
+    history_mode = repo_config.get("history_mode", "commits")
+    git_repo = GitRepository(
+        slug, repo_config["files"], REPO_CACHE_DIR, token, GIT_TIMEOUT_SECONDS,
+        branch=repo_config.get("branch"),
+        shallow=history_mode == "snapshot",
+    )
     head = git_repo.prepare()
     saved_head = None if full else db.get_sync_head(slug)
-    if saved_head and not git_repo.is_ancestor(saved_head, head):
+    if history_mode != "snapshot" and saved_head and not git_repo.is_ancestor(saved_head, head):
         print("Warning: saved commit is not in the current history; performing a full upsert scan.")
         saved_head = None
-    commits = git_repo.commits(head, saved_head)
+    if history_mode == "snapshot":
+        commits = [] if saved_head == head else [head]
+    else:
+        commits = git_repo.commits(head, saved_head)
     stats = RunStats(commits=len(commits))
     companies_before = db.company_ids()
     try:
         for index, sha in enumerate(commits, start=1):
             if index % 100 == 0:
                 print(f"  Scanned {index}/{len(commits)} commits...")
-            for document in git_repo.documents_at(sha):
+            for document in git_repo.documents_at(sha, all_files=history_mode == "snapshot"):
                 listings, skipped = parse_markdown_tables(document.content)
                 stats.rows += len(listings)
                 stats.skipped += skipped

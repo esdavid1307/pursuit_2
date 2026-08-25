@@ -2,7 +2,9 @@
 
 This local Python tool scans current and historical Markdown internship listings and builds a persistent SQLite catalog of companies and their ATS boards. History matters because repositories commonly replace live application links with `Closed` or remove old rows entirely.
 
-The initial configuration scans `README.md` and `README-2026.md` in `negarprh/Canadian-Tech-Internships-2027`. It recognizes Greenhouse, Lever, Workday, Ashby, SmartRecruiters, Workable, Rippling, Oracle Recruiting, iCIMS, Jobvite, and Eightfold; every other valid job URL is retained as `unknown`.
+The initial configuration scans the Canadian Tech Internships repository and the active, inactive, off-season, and archived tables on the `dev` branch of `SimplifyJobs/Summer2027-Internships`. Both Markdown pipe tables and HTML tables are supported. It recognizes Greenhouse, Lever, Workday, Ashby, SmartRecruiters, Workable, Rippling, Oracle Recruiting, iCIMS, Jobvite, and Eightfold; every other valid job URL is retained as `unknown`.
+
+The Canadian source replays every relevant commit. Simplify's bot-generated repository has tens of thousands of README commits and already preserves closed listings in dedicated files, so it uses `history_mode: "snapshot"`: all configured catalogs are scanned at the latest `dev` commit on first run and whenever that branch changes. This avoids millions of duplicate observations while retaining active, inactive, off-season, and archived listings.
 
 ## Setup
 
@@ -30,7 +32,7 @@ python main.py
 python main.py --export
 ```
 
-The reusable bare Git mirrors are stored in `.repo-cache/`, the database is `companies.db`, and export output is `companies.json`. A rewritten upstream history automatically causes a safe full upsert scan.
+The reusable blob-filtered bare Git clones are stored in `.repo-cache/`, the database is `companies.db`, and export output is `companies.json`. The clones retain complete commit history while downloading repository-file content only when needed. A rewritten upstream history automatically causes a safe full upsert scan.
 
 To add another source, append an entry containing `repo` and `files` to `REPOSITORIES` in `config.py`; no parser changes are needed.
 
