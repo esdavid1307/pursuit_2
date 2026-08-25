@@ -20,6 +20,8 @@ class RunStats:
     errors: int = 0
     new_ids: set[int] = field(default_factory=set)
     updated_ids: set[int] = field(default_factory=set)
+    new_board_ids: set[int] = field(default_factory=set)
+    updated_board_ids: set[int] = field(default_factory=set)
     new_names: list[str] = field(default_factory=list)
 
 
@@ -34,6 +36,7 @@ def process_repository(db: Database, repo_config: dict, full: bool, token: str |
         saved_head = None
     commits = git_repo.commits(head, saved_head)
     stats = RunStats(commits=len(commits))
+    companies_before = db.company_ids()
     try:
         for index, sha in enumerate(commits, start=1):
             if index % 100 == 0:
@@ -49,16 +52,21 @@ def process_repository(db: Database, repo_config: dict, full: bool, token: str |
                     if not ats:
                         stats.skipped += 1
                         continue
-                    company_id, created = db.record_listing(
+                    company_id, board_id, company_created, board_created = db.record_listing(
                         listing, ats, slug, document.path, sha, document.committed_at
                     )
-                    if created:
+                    if company_created:
                         stats.new_ids.add(company_id)
                         if len(stats.new_names) < 5:
                             stats.new_names.append(listing.company)
                     elif company_id not in stats.new_ids:
                         stats.updated_ids.add(company_id)
+                    if board_created:
+                        stats.new_board_ids.add(board_id)
+                    elif board_id not in stats.new_board_ids:
+                        stats.updated_board_ids.add(board_id)
         db.finish_sync(slug, head)
+        stats.new_ids = db.company_ids() - companies_before
     except Exception:
         db.rollback()
         raise
@@ -71,11 +79,12 @@ def print_summary(db: Database, stats: RunStats) -> None:
     print(f"Rows parsed: {stats.rows:,}")
     print(f"Rows/errors skipped: {stats.skipped:,}")
     print("\nUnique ATS configurations discovered:")
-    for ats in ("greenhouse", "lever", "workday", "unknown"):
-        print(f"{ats.title()}: {counts.get(ats, 0):,}")
+    for ats in sorted(counts, key=lambda name: (name == "unknown", name)):
+        print(f"{ats.title()}: {counts[ats]:,}")
     print(f"\nNew companies added: {len(stats.new_ids):,}")
     print(f"Existing companies updated: {len(stats.updated_ids):,}")
     print(f"Total companies in database: {db.total_companies():,}")
+    print(f"Total ATS boards in database: {db.total_boards():,}")
     if stats.new_names:
         print("New examples: " + ", ".join(stats.new_names))
 
@@ -106,6 +115,8 @@ def main() -> int:
             combined.errors += stats.errors
             combined.new_ids.update(stats.new_ids)
             combined.updated_ids.update(stats.updated_ids)
+            combined.new_board_ids.update(stats.new_board_ids)
+            combined.updated_board_ids.update(stats.updated_board_ids)
             combined.new_names.extend(stats.new_names[: max(0, 5 - len(combined.new_names))])
         combined.updated_ids.difference_update(combined.new_ids)
         print_summary(db, combined)

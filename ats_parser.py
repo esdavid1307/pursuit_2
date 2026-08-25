@@ -66,12 +66,58 @@ def parse_ats(url: str, company_name: str | None = None) -> ATSInfo | None:
         key = f"lever|{host}|{identifier.lower()}"
         return ATSInfo("lever", identifier, host, identifier, normalized, key)
 
+    if host == "jobs.ashbyhq.com" and parts:
+        identifier = parts[0]
+        return ATSInfo("ashby", identifier, host, identifier, normalized, f"ashby|{host}|{identifier.lower()}")
+
+    if host == "jobs.smartrecruiters.com" and parts:
+        identifier = parts[0]
+        return ATSInfo("smartrecruiters", identifier, host, identifier, normalized, f"smartrecruiters|{host}|{identifier.lower()}")
+
+    if host == "apply.workable.com" and parts:
+        identifier = parts[0]
+        return ATSInfo("workable", identifier, host, identifier, normalized, f"workable|{host}|{identifier.lower()}")
+
+    if host == "ats.rippling.com" and parts:
+        offset = 1 if re.fullmatch(r"[a-z]{2}-[A-Z]{2}", parts[0]) else 0
+        if len(parts) > offset:
+            identifier = parts[offset]
+            return ATSInfo("rippling", identifier, host, identifier, normalized, f"rippling|{host}|{identifier.lower()}")
+
+    if host == "jobs.jobvite.com" and parts:
+        identifier = parts[0]
+        return ATSInfo("jobvite", identifier, host, identifier, normalized, f"jobvite|{host}|{identifier.lower()}")
+
     workday_match = re.fullmatch(r"([^.]+)\.wd\d+\.myworkdayjobs\.com", host)
     if workday_match and parts:
         identifier = workday_match.group(1)
         site = parts[0]
         key = f"workday|{host}|{site.lower()}"
         return ATSInfo("workday", identifier, host, site, normalized, key)
+
+    if re.fullmatch(r"wd\d+\.myworkdaysite\.com", host):
+        lowered = [part.lower() for part in parts]
+        if "recruiting" in lowered:
+            index = lowered.index("recruiting")
+            if len(parts) > index + 2:
+                identifier, site = parts[index + 1], parts[index + 2]
+                key = f"workday|{host}|{identifier.lower()}|{site.lower()}"
+                return ATSInfo("workday", identifier, host, site, normalized, key)
+
+    if host.endswith(".icims.com"):
+        identifier = host.removesuffix(".icims.com")
+        return ATSInfo("icims", identifier, host, None, normalized, f"icims|{host}")
+
+    if host.endswith(".eightfold.ai"):
+        identifier = host.removesuffix(".eightfold.ai").split(".")[-1]
+        site = parts[0] if parts else None
+        return ATSInfo("eightfold", identifier, host, site, normalized, f"eightfold|{host}|{(site or '').lower()}")
+
+    if host.endswith(".oraclecloud.com") and "sites" in [part.lower() for part in parts]:
+        index = [part.lower() for part in parts].index("sites")
+        site = parts[index + 1] if len(parts) > index + 1 else None
+        identifier = host.split(".")[0]
+        return ATSInfo("oracle", identifier, host, site, normalized, f"oracle|{host}|{(site or '').lower()}")
 
     # Unknown job boards often have one URL per job. Group those URLs by company
     # and host; the observations table still retains every individual job URL.

@@ -1,8 +1,8 @@
 # Internship Company Discovery
 
-This local Python tool scans current and historical Markdown internship listings and builds a persistent SQLite catalog of company ATS configurations. History matters because repositories commonly replace live application links with `Closed` or remove old rows entirely.
+This local Python tool scans current and historical Markdown internship listings and builds a persistent SQLite catalog of companies and their ATS boards. History matters because repositories commonly replace live application links with `Closed` or remove old rows entirely.
 
-The initial configuration scans `README.md` and `README-2026.md` in `negarprh/Canadian-Tech-Internships-2027`. It recognizes Greenhouse, Lever, and Workday; every other valid job URL is retained as `unknown`.
+The initial configuration scans `README.md` and `README-2026.md` in `negarprh/Canadian-Tech-Internships-2027`. It recognizes Greenhouse, Lever, Workday, Ashby, SmartRecruiters, Workable, Rippling, Oracle Recruiting, iCIMS, Jobvite, and Eightfold; every other valid job URL is retained as `unknown`.
 
 ## Setup
 
@@ -34,4 +34,4 @@ The reusable bare Git mirrors are stored in `.repo-cache/`, the database is `com
 
 To add another source, append an entry containing `repo` and `files` to `REPOSITORIES` in `config.py`; no parser changes are needed.
 
-The database separates canonical ATS identities, per-repository discovery provenance, raw job observations, and incremental sync checkpoints. Unknown job boards are grouped by normalized company name and host, while every individual URL remains available in `job_observations`. Companies are never deleted merely because a listing disappears.
+The database separates canonical companies, their monitorable ATS boards, per-repository discovery provenance, raw job observations, and incremental sync checkpoints. `companies.json` contains one object per company with an `ats_boards` array and an explicit `ats_provider_known` tag. Unknown job boards are grouped by normalized company name and host, while every individual URL remains available in `job_observations`. Companies are never deleted merely because a listing disappears.
