@@ -45,7 +45,7 @@ def process_repository(db: Database, repo_config: dict, full: bool, token: str |
                 for listing in listings:
                     if not listing.apply_url:
                         continue
-                    ats = parse_ats(listing.apply_url)
+                    ats = parse_ats(listing.apply_url, listing.company)
                     if not ats:
                         stats.skipped += 1
                         continue
@@ -123,4 +123,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

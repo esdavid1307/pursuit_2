@@ -46,10 +46,17 @@ class ATSTests(unittest.TestCase):
                 self.assertEqual((ats_name, identifier, site), (ats.ats, ats.ats_identifier, ats.ats_site))
 
     def test_unknown_and_invalid(self):
-        ats = parse_ats("HTTPS://Example.com/job/123/#fragment")
+        ats = parse_ats("HTTPS://Example.com/job/123/#fragment", "Example Inc.")
         self.assertEqual("unknown", ats.ats)
-        self.assertEqual("unknown|https://example.com/job/123", ats.identity_key)
+        self.assertEqual("unknown|exampleinc|example.com", ats.identity_key)
         self.assertIsNone(parse_ats("not a URL"))
+
+    def test_unknown_jobs_share_company_host_identity(self):
+        first = parse_ats("https://jobs.example.com/job/123", "Acme Corp")
+        second = parse_ats("https://jobs.example.com/job/456", "ACME Corp.")
+        other_company = parse_ats("https://jobs.example.com/job/123", "Other Corp")
+        self.assertEqual(first.identity_key, second.identity_key)
+        self.assertNotEqual(first.identity_key, other_company.identity_key)
 
 
 class DatabaseTests(unittest.TestCase):
@@ -58,10 +65,10 @@ class DatabaseTests(unittest.TestCase):
             root = Path(directory)
             db = Database(root / "test.db")
             listing = Listing("RBC", "Intern", "Toronto", "https://jobs.lever.co/acme/one", "Aug 1")
-            ats = parse_ats(listing.apply_url)
+            ats = parse_ats(listing.apply_url, listing.company)
             first_id, created = db.record_listing(listing, ats, "owner/repo", "README.md", "a", "2026-01-01T00:00:00Z")
             better = Listing("Royal Bank of Canada", "Intern 2", "Toronto", "https://jobs.lever.co/acme/two", "Aug 2")
-            second_id, created_again = db.record_listing(better, parse_ats(better.apply_url), "owner/repo", "README.md", "b", "2026-01-02T00:00:00Z")
+            second_id, created_again = db.record_listing(better, parse_ats(better.apply_url, better.company), "owner/repo", "README.md", "b", "2026-01-02T00:00:00Z")
             db.finish_sync("owner/repo", "b")
             self.assertEqual(first_id, second_id)
             self.assertTrue(created)
@@ -76,4 +83,3 @@ class DatabaseTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

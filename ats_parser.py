@@ -43,7 +43,12 @@ def _path_segments(url: str) -> list[str]:
     return [unquote(part) for part in urlsplit(url).path.split("/") if part]
 
 
-def parse_ats(url: str) -> ATSInfo | None:
+def normalize_company_name(value: str) -> str:
+    """Create a stable key while retaining meaningful letters and numbers."""
+    return re.sub(r"[^a-z0-9]+", "", value.casefold())
+
+
+def parse_ats(url: str, company_name: str | None = None) -> ATSInfo | None:
     normalized = normalize_url(url)
     if not normalized:
         return None
@@ -68,4 +73,8 @@ def parse_ats(url: str) -> ATSInfo | None:
         key = f"workday|{host}|{site.lower()}"
         return ATSInfo("workday", identifier, host, site, normalized, key)
 
-    return ATSInfo("unknown", None, host, None, normalized, f"unknown|{normalized}")
+    # Unknown job boards often have one URL per job. Group those URLs by company
+    # and host; the observations table still retains every individual job URL.
+    company_key = normalize_company_name(company_name or "")
+    identity = f"{company_key}|{host}" if company_key else normalized
+    return ATSInfo("unknown", None, host, None, normalized, f"unknown|{identity}")

@@ -34,5 +34,4 @@ The reusable bare Git mirrors are stored in `.repo-cache/`, the database is `com
 
 To add another source, append an entry containing `repo` and `files` to `REPOSITORIES` in `config.py`; no parser changes are needed.
 
-The database separates canonical ATS identities, per-repository discovery provenance, raw job observations, and incremental sync checkpoints. Companies are never deleted merely because a listing disappears.
-
+The database separates canonical ATS identities, per-repository discovery provenance, raw job observations, and incremental sync checkpoints. Unknown job boards are grouped by normalized company name and host, while every individual URL remains available in `job_observations`. Companies are never deleted merely because a listing disappears.
