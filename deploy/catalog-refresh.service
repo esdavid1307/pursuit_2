@@ -1,0 +1,9 @@
+[Unit]
+Description=Refresh internship company catalog and restart the monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=__USER__
+ExecStart=/bin/bash __REPO__/deploy/refresh_catalog.sh
