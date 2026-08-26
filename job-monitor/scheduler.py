@@ -2,7 +2,7 @@
 
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 import threading
 import time
@@ -57,15 +57,22 @@ class Scheduler:
             with self._active_lock:
                 self._active.discard(key)
 
-    def fetch_targets(self, targets) -> list[FetchResult]:
+    def fetch_targets(self, targets):
         if not targets:
-            return []
-        results = []
+            return
         with ThreadPoolExecutor(max_workers=self.settings.max_workers, thread_name_prefix="ats") as pool:
             futures = [pool.submit(self._fetch, target) for target in targets]
             for future in as_completed(futures):
-                results.append(future.result())
-        return results
+                yield future.result()
+
+    def _resolve_location(self, target, job):
+        """Workday collapses multi-city postings into "N Locations"; look up the real cities for unseen matches."""
+        if job.ats != "workday" or not workday.has_ambiguous_location(job) or self.db.is_seen(job):
+            return job
+        try:
+            return replace(job, location=workday.resolve_locations(target, job, self.settings.request_timeout_seconds))
+        except Exception:
+            return job
 
     def deliver_pending(self) -> tuple[int, int]:
         sent = failed = 0
@@ -88,7 +95,7 @@ class Scheduler:
         print(f"[{datetime.now():%H:%M:%S}] Checking {len(targets)} due boards...")
         print(f"HIGH priority: {high}\nNORMAL priority: {len(targets) - high}")
         stats = {"targets": len(targets), "matched": 0, "new": 0, "queued": 0, "failed": 0}
-        initial_saved = 0
+        initial_saved = total_sent = total_pending = 0
         for result in self.fetch_targets(targets):
             target = result.target
             label = f"[{target['ats'].title()}] {target['company']}"
@@ -99,6 +106,7 @@ class Scheduler:
                 continue
             matches = [job for job in result.jobs if is_relevant_job(job.title)]
             if self.settings.canada_only:
+                matches = [self._resolve_location(target, job) for job in matches]
                 matches = [job for job in matches if is_canadian_location(job.location)]
             else:
                 matches = canada_first(matches)
@@ -112,10 +120,16 @@ class Scheduler:
             if not was_initialized and not self.settings.send_existing_on_first_run:
                 initial_saved += new
             print(f"{label}: {len(result.jobs)} jobs fetched, {len(matches)} matching, {new} new")
+            if queued:
+                sent, failed = self.deliver_pending()
+                total_sent += sent
+                total_pending += failed
         if initial_saved:
             print(f"Initial indexing complete: {initial_saved} existing matching jobs saved.")
         sent, pending = self.deliver_pending()
-        print(f"Scan complete. Matching: {stats['matched']}; new: {stats['new']}; sent: {sent}; pending failures: {pending}")
+        total_sent += sent
+        total_pending += pending
+        print(f"Scan complete. Matching: {stats['matched']}; new: {stats['new']}; sent: {total_sent}; pending failures: {total_pending}")
         return stats
 
     def validate(self) -> dict[str, dict[str, int]]:

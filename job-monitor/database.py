@@ -112,6 +112,9 @@ class Database:
     def all_targets(self) -> list[sqlite3.Row]:
         return self.connection.execute("SELECT * FROM monitor_targets WHERE enabled=1 ORDER BY ats,company").fetchall()
 
+    def is_seen(self, job: Job) -> bool:
+        return self.connection.execute("SELECT 1 FROM seen_jobs WHERE job_key=?", (job_key(job),)).fetchone() is not None
+
     def record_success(self, target, jobs: list[Job], send_existing: bool, now: datetime | None = None) -> tuple[int, int]:
         now = now or utc_now()
         initialized = bool(target["initialized"])

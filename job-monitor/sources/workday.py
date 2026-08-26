@@ -1,5 +1,6 @@
 """Workday Candidate Experience public search adapter."""
 
+import re
 from urllib.parse import quote
 import requests
 
@@ -7,6 +8,26 @@ from sources import Job, SourceError, request_json, target_value
 
 
 PAGE_SIZE = 20
+AMBIGUOUS_LOCATION = re.compile(r"^\s*\d+\s+(?:More\s+)?Locations?\s*$", re.IGNORECASE)
+
+
+def has_ambiguous_location(job: Job) -> bool:
+    return bool(AMBIGUOUS_LOCATION.match(job.location or ""))
+
+
+def resolve_locations(target, job: Job, timeout: int, session: requests.Session | None = None) -> str:
+    """The jobs search collapses multi-location postings into "N Locations"; the detail endpoint lists them."""
+    session = session or requests.Session()
+    host = (target_value(target, "ats_host") or "").strip().strip("/")
+    site = (target_value(target, "ats_site") or "").strip().strip("/")
+    prefix = f"https://{host}"
+    if not host or not site or not job.url.startswith(prefix):
+        return job.location
+    path = job.url[len(prefix):]
+    data = request_json(session, "GET", f"https://{host}/wday/cxs/{quote(_tenant(target))}/{quote(site)}{path}", timeout)
+    info = data.get("jobPostingInfo") or {}
+    locations = [info.get("location") or ""] + [str(item) for item in info.get("additionalLocations") or []]
+    return ", ".join(part for part in locations if part) or job.location
 
 
 def _tenant(target) -> str:

@@ -146,6 +146,18 @@ class AdapterTests(unittest.TestCase):
         self.assertIn("/wday/cxs/acme/Careers/jobs", session.calls[0][1])
         self.assertEqual(1, session.calls[1][2]["json"]["offset"])
 
+    def test_workday_resolves_ambiguous_locations(self):
+        job = Job("R1", "A", "Software Intern", "3 Locations", "https://acme.wd3.myworkdayjobs.com/job/one", "workday")
+        self.assertTrue(workday.has_ambiguous_location(job))
+        self.assertFalse(workday.has_ambiguous_location(Job("R2", "A", "x", "Toronto, ON", "u", "workday")))
+        session = FakeSession([FakeResponse({"jobPostingInfo": {
+            "location": "RBC WATERPARK PLACE:TORONTO",
+            "additionalLocations": ["VANCOUVER, British Columbia, Canada"]}})])
+        target = {"company": "A", "ats_host": "acme.wd3.myworkdayjobs.com", "ats_identifier": "x", "ats_site": "Careers"}
+        location = workday.resolve_locations(target, job, 2, session)
+        self.assertEqual("RBC WATERPARK PLACE:TORONTO, VANCOUVER, British Columbia, Canada", location)
+        self.assertIn("/wday/cxs/acme/Careers/job/one", session.calls[0][1])
+
     def test_ashby_skips_unlisted_and_joins_locations(self):
         session = FakeSession([FakeResponse({"jobs": [
             {"id": "j1", "title": "Software Intern", "location": "Toronto",
