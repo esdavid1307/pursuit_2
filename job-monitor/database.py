@@ -45,7 +45,7 @@ def target_key(board: dict) -> str | None:
     identifier = str(board.get("ats_identifier") or "").strip()
     site = str(board.get("ats_site") or "").strip()
     host = str(board.get("ats_host") or "").strip().casefold()
-    if ats in {"greenhouse", "lever"} and (identifier or site):
+    if ats in {"greenhouse", "lever", "ashby", "smartrecruiters", "workable", "rippling"} and (identifier or site):
         return f"{ats}:{(identifier or site).casefold()}"
     if ats == "workday" and host and identifier and site:
         return f"workday:{host}:{identifier.casefold()}:{site.casefold()}"

@@ -8,3 +8,4 @@ companies.db-journal
 companies.json
 jobs.db
 jobs.db-*
+job-monitor/logs/

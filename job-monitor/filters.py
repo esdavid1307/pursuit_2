@@ -18,6 +18,8 @@ CANADIAN_NAMES = (
     "vancouver", "montreal", "montréal", "calgary", "edmonton", "ottawa", "waterloo",
     "kitchener", "mississauga", "markham", "burnaby", "victoria", "halifax",
     "winnipeg", "saskatoon", "regina", "quebec city", "gatineau", "surrey", "richmond",
+    "brampton", "vaughan", "oakville", "scarborough", "north york", "etobicoke",
+    "laval", "longueuil", "london, ontario",
 )
 PROVINCE_CODES = ("AB", "BC", "ON", "QC", "SK", "MB", "NS", "NB", "NL", "PE", "YT", "NT", "NU")
 

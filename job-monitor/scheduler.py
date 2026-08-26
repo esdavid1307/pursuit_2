@@ -8,11 +8,19 @@ import threading
 import time
 
 from database import Database
-from filters import canada_first, is_relevant_job
-from sources import greenhouse, lever, workday
+from filters import canada_first, is_canadian_location, is_relevant_job
+from sources import ashby, greenhouse, lever, rippling, smartrecruiters, workable, workday
 
 
-ADAPTERS = {"greenhouse": greenhouse.fetch_jobs, "lever": lever.fetch_jobs, "workday": workday.fetch_jobs}
+ADAPTERS = {
+    "greenhouse": greenhouse.fetch_jobs,
+    "lever": lever.fetch_jobs,
+    "workday": workday.fetch_jobs,
+    "ashby": ashby.fetch_jobs,
+    "smartrecruiters": smartrecruiters.fetch_jobs,
+    "workable": workable.fetch_jobs,
+    "rippling": rippling.fetch_jobs,
+}
 
 
 @dataclass
@@ -89,7 +97,11 @@ class Scheduler:
                 stats["failed"] += 1
                 print(f"{label}: ERROR ({failures} failures): {result.error}")
                 continue
-            matches = canada_first([job for job in result.jobs if is_relevant_job(job.title)])
+            matches = [job for job in result.jobs if is_relevant_job(job.title)]
+            if self.settings.canada_only:
+                matches = [job for job in matches if is_canadian_location(job.location)]
+            else:
+                matches = canada_first(matches)
             stats["matched"] += len(matches)
             was_initialized = bool(target["initialized"])
             new, queued = self.db.record_success(

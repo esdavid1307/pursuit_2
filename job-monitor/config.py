@@ -40,6 +40,7 @@ class Settings:
     max_workers: int
     send_existing_on_first_run: bool
     request_timeout_seconds: int
+    canada_only: bool
 
 
 def load_settings() -> Settings:
@@ -54,4 +55,5 @@ def load_settings() -> Settings:
         max_workers=_int("MAX_WORKERS", 8),
         send_existing_on_first_run=_bool("SEND_EXISTING_ON_FIRST_RUN", False),
         request_timeout_seconds=_int("REQUEST_TIMEOUT_SECONDS", 15),
+        canada_only=_bool("CANADA_ONLY", True),
     )

@@ -3,11 +3,11 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
-from database import Database, job_key
+from database import Database, job_key, target_key
 from discord import DiscordClient
 from filters import canada_first, is_canadian_location, is_relevant_job
 from sources import Job
-from sources import greenhouse, lever, workday
+from sources import ashby, greenhouse, lever, rippling, smartrecruiters, workable, workday
 
 
 class FakeResponse:
@@ -56,6 +56,12 @@ class FilterTests(unittest.TestCase):
                 Job("2", "B", "Software Intern", "Calgary, AB", "u2", "lever")]
         self.assertEqual("B", canada_first(jobs)[0].company)
 
+    def test_strict_canada_filter_drops_blank_and_foreign(self):
+        for location in ("", "Remote", "New York, NY", "Remote - United States"):
+            self.assertFalse(is_canadian_location(location), location)
+        for location in ("Remote - Canada", "Toronto, ON / New York, NY", "Vaughan, Ontario", "London, ON"):
+            self.assertTrue(is_canadian_location(location), location)
+
 
 class DatabaseTests(unittest.TestCase):
     def setUp(self):
@@ -71,7 +77,7 @@ class DatabaseTests(unittest.TestCase):
         data = [{"company": "WinterCo", "recruiting_history": ["Winter 2027"], "ats_boards": [
                     {"ats": "lever", "ats_provider_known": True, "ats_identifier": "Acme", "ats_host": "jobs.lever.co", "ats_site": "Acme"},
                     {"ats": "lever", "ats_provider_known": True, "ats_identifier": "Acme", "ats_host": "jobs.lever.co", "ats_site": "Acme"},
-                    {"ats": "ashby", "ats_provider_known": True, "ats_identifier": "x", "ats_host": "jobs.ashbyhq.com", "ats_site": "x"},
+                    {"ats": "icims", "ats_provider_known": True, "ats_identifier": "x", "ats_host": "careers.icims.com", "ats_site": "x"},
                 ]}]
         path = self.root / "companies.json"
         path.write_text(json.dumps(data))
@@ -139,6 +145,62 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(2, len(jobs))
         self.assertIn("/wday/cxs/acme/Careers/jobs", session.calls[0][1])
         self.assertEqual(1, session.calls[1][2]["json"]["offset"])
+
+    def test_ashby_skips_unlisted_and_joins_locations(self):
+        session = FakeSession([FakeResponse({"jobs": [
+            {"id": "j1", "title": "Software Intern", "location": "Toronto",
+             "secondaryLocations": [{"location": "Vancouver"}], "jobUrl": "https://apply", "isListed": True,
+             "publishedAt": "2026-08-01"},
+            {"id": "j2", "title": "Hidden Intern", "location": "Toronto", "jobUrl": "https://hidden", "isListed": False},
+        ]})])
+        jobs = ashby.fetch_jobs({"company": "A", "ats_site": "a"}, 2, session)
+        self.assertEqual(1, len(jobs))
+        self.assertEqual(("j1", "Toronto, Vancouver"), (jobs[0].source_job_id, jobs[0].location))
+
+    def test_smartrecruiters_paginates_and_maps_country(self):
+        session = FakeSession([
+            FakeResponse({"totalFound": 2, "content": [
+                {"id": "100", "name": "Software Intern",
+                 "location": {"city": "Toronto", "region": "Ontario", "country": "ca"}}]}),
+            FakeResponse({"totalFound": 2, "content": [
+                {"id": "200", "name": "Developer Co-op",
+                 "location": {"city": "Boston", "country": "us", "remote": True}}]}),
+        ])
+        jobs = smartrecruiters.fetch_jobs({"company": "A", "ats_identifier": "Acme"}, 2, session)
+        self.assertEqual(2, len(jobs))
+        self.assertEqual("Toronto, Ontario, Canada", jobs[0].location)
+        self.assertEqual("https://jobs.smartrecruiters.com/Acme/100", jobs[0].url)
+        self.assertEqual("Remote, Boston, US", jobs[1].location)
+        self.assertEqual(0, session.calls[0][2]["params"]["offset"])
+        self.assertEqual(1, session.calls[1][2]["params"]["offset"])
+
+    def test_workable(self):
+        session = FakeSession([FakeResponse({"jobs": [
+            {"shortcode": "AB12", "title": "Software Intern", "city": "Waterloo", "state": "Ontario",
+             "country": "Canada", "url": "https://apply", "published_on": "2026-08-01"}]})])
+        jobs = workable.fetch_jobs({"company": "A", "ats_site": "acme"}, 2, session)
+        self.assertEqual(("AB12", "Waterloo, Ontario, Canada"), (jobs[0].source_job_id, jobs[0].location))
+
+    def test_rippling(self):
+        session = FakeSession([FakeResponse([
+            {"uuid": "r1", "name": "Software Intern", "workLocation": {"label": "Toronto, ON"}, "url": "https://apply"},
+            {"id": "r2", "name": "Developer Co-op", "locations": [{"label": "Montreal"}, {"label": "Remote"}],
+             "url": "https://apply2"},
+        ])])
+        jobs = rippling.fetch_jobs({"company": "A", "ats_identifier": "acme"}, 2, session)
+        self.assertEqual(("r1", "Toronto, ON"), (jobs[0].source_job_id, jobs[0].location))
+        self.assertEqual("Montreal, Remote", jobs[1].location)
+
+
+class TargetKeyTests(unittest.TestCase):
+    def test_new_ats_supported(self):
+        for ats in ("ashby", "smartrecruiters", "workable", "rippling"):
+            board = {"ats": ats, "ats_identifier": "Acme", "ats_host": "example.com", "ats_site": ""}
+            self.assertEqual(f"{ats}:acme", target_key(board))
+
+    def test_unsupported_ats_rejected(self):
+        board = {"ats": "icims", "ats_identifier": "Acme", "ats_host": "careers.icims.com", "ats_site": "Acme"}
+        self.assertIsNone(target_key(board))
 
 
 class DiscordTests(unittest.TestCase):
