@@ -6,4 +6,5 @@ __pycache__/
 companies.db
 companies.db-journal
 companies.json
-
+jobs.db
+jobs.db-*
