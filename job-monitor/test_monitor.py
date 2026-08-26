@@ -143,11 +143,19 @@ class AdapterTests(unittest.TestCase):
         target = {"company": "A", "ats_host": "acme.wd3.myworkdayjobs.com", "ats_identifier": "ignored", "ats_site": "Careers"}
         jobs = workday.fetch_jobs(target, 2, session)
         self.assertEqual(2, len(jobs))
+        self.assertEqual("https://acme.wd3.myworkdayjobs.com/Careers/job/one", jobs[0].url)
         self.assertIn("/wday/cxs/acme/Careers/jobs", session.calls[0][1])
         self.assertEqual(1, session.calls[1][2]["json"]["offset"])
 
+    def test_workday_site_url_includes_recruiting_prefix(self):
+        session = FakeSession([FakeResponse({"total": 1, "jobPostings": [
+            {"title": "Software Co-op", "externalPath": "/job/one", "locationsText": "Newmarket", "bulletFields": ["R1"]}]})])
+        target = {"company": "Magna", "ats_host": "wd3.myworkdaysite.com", "ats_identifier": "magna", "ats_site": "Magna"}
+        jobs = workday.fetch_jobs(target, 2, session)
+        self.assertEqual("https://wd3.myworkdaysite.com/recruiting/magna/Magna/job/one", jobs[0].url)
+
     def test_workday_resolves_ambiguous_locations(self):
-        job = Job("R1", "A", "Software Intern", "3 Locations", "https://acme.wd3.myworkdayjobs.com/job/one", "workday")
+        job = Job("R1", "A", "Software Intern", "3 Locations", "https://acme.wd3.myworkdayjobs.com/Careers/job/one", "workday")
         self.assertTrue(workday.has_ambiguous_location(job))
         self.assertFalse(workday.has_ambiguous_location(Job("R2", "A", "x", "Toronto, ON", "u", "workday")))
         session = FakeSession([FakeResponse({"jobPostingInfo": {

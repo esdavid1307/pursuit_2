@@ -20,10 +20,10 @@ def resolve_locations(target, job: Job, timeout: int, session: requests.Session 
     session = session or requests.Session()
     host = (target_value(target, "ats_host") or "").strip().strip("/")
     site = (target_value(target, "ats_site") or "").strip().strip("/")
-    prefix = f"https://{host}"
-    if not host or not site or not job.url.startswith(prefix):
+    marker = job.url.find("/job/")
+    if not host or not site or marker == -1:
         return job.location
-    path = job.url[len(prefix):]
+    path = job.url[marker:]
     data = request_json(session, "GET", f"https://{host}/wday/cxs/{quote(_tenant(target))}/{quote(site)}{path}", timeout)
     info = data.get("jobPostingInfo") or {}
     locations = [info.get("location") or ""] + [str(item) for item in info.get("additionalLocations") or []]
@@ -48,6 +48,11 @@ def fetch_jobs(target, timeout: int, session: requests.Session | None = None) ->
     if not host or not site or not tenant:
         raise SourceError("missing Workday host, tenant, or site")
     endpoint = f"https://{host}/wday/cxs/{quote(tenant)}/{quote(site)}/jobs"
+    # Candidate-facing pages need the career-site segment; the API's externalPath omits it.
+    if "myworkdaysite.com" in host.casefold():
+        public_base = f"https://{host}/recruiting/{tenant}/{site}"
+    else:
+        public_base = f"https://{host}/{site}"
     jobs: list[Job] = []
     offset = 0
     while True:
@@ -57,7 +62,7 @@ def fetch_jobs(target, timeout: int, session: requests.Session | None = None) ->
         postings = data.get("jobPostings") or []
         for item in postings:
             path = item.get("externalPath") or ""
-            url = path if path.startswith("http") else f"https://{host}{path}"
+            url = path if path.startswith("http") else f"{public_base}{path}"
             source_id = item.get("bulletFields", [None])[0] if item.get("bulletFields") else None
             source_id = str(source_id) if source_id else (path.rstrip("/").split("/")[-1] or None)
             jobs.append(Job(source_id, target_value(target, "company"), item.get("title") or "Untitled role",
