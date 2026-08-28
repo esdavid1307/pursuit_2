@@ -4,6 +4,11 @@ from dataclasses import dataclass
 import requests
 
 
+def _clip(text: str, limit: int) -> str:
+    """Discord rejects embeds whose title exceeds 256 chars or field values 1024."""
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
 @dataclass(frozen=True)
 class DeliveryResult:
     success: bool
@@ -38,14 +43,14 @@ class DiscordClient:
 
     def send_job(self, row) -> DeliveryResult:
         fields = [
-            {"name": "Company", "value": row["company"], "inline": True},
-            {"name": "Location", "value": row["location"] or "Not specified", "inline": True},
+            {"name": "Company", "value": _clip(row["company"], 1024), "inline": True},
+            {"name": "Location", "value": _clip(row["location"] or "Not specified", 1024), "inline": True},
             {"name": "Source", "value": row["ats"].title(), "inline": True},
         ]
         if row["posted_at"]:
             fields.append({"name": "Posted", "value": row["posted_at"], "inline": True})
         fields.append({"name": "First detected", "value": row["first_seen_at"], "inline": False})
-        return self._send({"embeds": [{"title": row["title"], "url": row["url"],
+        return self._send({"embeds": [{"title": _clip(row["title"], 256), "url": row["url"],
                                        "description": f"[Apply directly]({row['url']})",
                                        "color": 0x2ECC71, "fields": fields}]})
 
