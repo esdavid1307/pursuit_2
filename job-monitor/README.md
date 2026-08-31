@@ -18,6 +18,12 @@ Create a fresh Discord webhook and put it only in `.env`:
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 ```
 
+Optionally route USA internships to a second channel by adding its webhook. When set, US-located matches are alerted to that channel while Canadian matches keep going to the main one. Existing US postings are baselined silently on the first scan (set `USA_SEND_EXISTING_ON_FIRST_RUN=true` to backfill them instead); after that only newly posted US jobs alert.
+
+```env
+DISCORD_WEBHOOK_URL_USA=https://discord.com/api/webhooks/...
+```
+
 Never commit `.env` or paste the webhook into source code. The root `.gitignore` already excludes `.env` files. The webhook previously shared in chat should be revoked and replaced.
 
 By default `COMPANIES_JSON=../companies.json`, so exports from the existing discovery project are picked up directly. `DATABASE_PATH=jobs.db` is resolved relative to this directory. The remaining settings control poll intervals, scheduler wake frequency, worker count, first-scan alerts, and HTTP timeout.

@@ -32,6 +32,8 @@ def _path(name: str, default: str) -> Path:
 @dataclass(frozen=True)
 class Settings:
     webhook_url: str
+    usa_webhook_url: str
+    usa_send_existing_on_first_run: bool
     companies_json: Path
     database_path: Path
     high_priority_interval_minutes: int
@@ -47,6 +49,8 @@ def load_settings() -> Settings:
     load_dotenv(BASE_DIR / ".env")
     return Settings(
         webhook_url=os.getenv("DISCORD_WEBHOOK_URL", "").strip(),
+        usa_webhook_url=os.getenv("DISCORD_WEBHOOK_URL_USA", "").strip(),
+        usa_send_existing_on_first_run=_bool("USA_SEND_EXISTING_ON_FIRST_RUN", False),
         companies_json=_path("COMPANIES_JSON", "../companies.json"),
         database_path=_path("DATABASE_PATH", "jobs.db"),
         high_priority_interval_minutes=_int("HIGH_PRIORITY_INTERVAL_MINUTES", 5),

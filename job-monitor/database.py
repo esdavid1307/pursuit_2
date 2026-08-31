@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS monitor_targets (
  ats_identifier TEXT, ats_host TEXT, ats_site TEXT, priority TEXT NOT NULL,
  poll_interval_minutes INTEGER NOT NULL, last_checked_at TEXT, last_success_at TEXT,
  last_job_seen_at TEXT, next_check_at TEXT, failure_count INTEGER NOT NULL DEFAULT 0,
- enabled INTEGER NOT NULL DEFAULT 1, initialized INTEGER NOT NULL DEFAULT 0
+ enabled INTEGER NOT NULL DEFAULT 1, initialized INTEGER NOT NULL DEFAULT 0,
+ usa_initialized INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS seen_jobs (
  job_key TEXT PRIMARY KEY, source_job_id TEXT, company TEXT NOT NULL, ats TEXT NOT NULL,
@@ -25,7 +26,8 @@ CREATE TABLE IF NOT EXISTS seen_jobs (
 CREATE TABLE IF NOT EXISTS notifications (
  job_key TEXT PRIMARY KEY REFERENCES seen_jobs(job_key) ON DELETE CASCADE,
  status TEXT NOT NULL DEFAULT 'pending', attempts INTEGER NOT NULL DEFAULT 0,
- next_attempt_at TEXT NOT NULL, last_error TEXT, sent_at TEXT
+ next_attempt_at TEXT NOT NULL, last_error TEXT, sent_at TEXT,
+ region TEXT NOT NULL DEFAULT 'canada'
 );
 CREATE INDEX IF NOT EXISTS idx_targets_due ON monitor_targets(enabled, next_check_at);
 CREATE INDEX IF NOT EXISTS idx_notifications_due ON notifications(status, next_attempt_at);
@@ -66,7 +68,15 @@ class Database:
         self.connection.execute("PRAGMA foreign_keys=ON")
         self.connection.execute("PRAGMA journal_mode=WAL")
         self.connection.executescript(SCHEMA)
+        self._ensure_column("monitor_targets", "usa_initialized", "INTEGER NOT NULL DEFAULT 0")
+        self._ensure_column("notifications", "region", "TEXT NOT NULL DEFAULT 'canada'")
         self.connection.commit()
+
+    def _ensure_column(self, table: str, column: str, definition: str):
+        """CREATE TABLE IF NOT EXISTS never alters existing tables, so add new columns here."""
+        existing = {row["name"] for row in self.connection.execute(f"PRAGMA table_info({table})")}
+        if column not in existing:
+            self.connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
     def close(self):
         self.connection.close()
@@ -115,9 +125,12 @@ class Database:
     def is_seen(self, job: Job) -> bool:
         return self.connection.execute("SELECT 1 FROM seen_jobs WHERE job_key=?", (job_key(job),)).fetchone() is not None
 
-    def record_success(self, target, jobs: list[Job], send_existing: bool, now: datetime | None = None) -> tuple[int, int]:
+    def record_success(self, target, jobs: list[Job], send_existing: bool, now: datetime | None = None,
+                       regions: dict[str, str] | None = None, usa_active: bool = False,
+                       usa_send_existing: bool = False) -> tuple[int, int]:
         now = now or utc_now()
         initialized = bool(target["initialized"])
+        usa_initialized = bool(target["usa_initialized"])
         new_count = queued = 0
         with self.connection:
             for job in jobs:
@@ -131,16 +144,24 @@ class Database:
                 )
                 if cursor.rowcount:
                     new_count += 1
-                    if initialized or send_existing:
+                    region = regions.get(key, "canada") if regions else "canada"
+                    if region == "usa":
+                        should_queue = usa_initialized or usa_send_existing
+                    else:
+                        should_queue = initialized or send_existing
+                    if should_queue:
                         self.connection.execute(
-                            "INSERT OR IGNORE INTO notifications(job_key,next_attempt_at) VALUES (?,?)", (key, iso(now))
+                            "INSERT OR IGNORE INTO notifications(job_key,next_attempt_at,region) VALUES (?,?,?)",
+                            (key, iso(now), region),
                         )
                         queued += 1
             self.connection.execute(
-                """UPDATE monitor_targets SET initialized=1,last_checked_at=?,last_success_at=?,
+                """UPDATE monitor_targets SET initialized=1,
+                   usa_initialized=CASE WHEN ? THEN 1 ELSE usa_initialized END,
+                   last_checked_at=?,last_success_at=?,
                    last_job_seen_at=CASE WHEN ?>0 THEN ? ELSE last_job_seen_at END,
                    next_check_at=?,failure_count=0 WHERE target_key=?""",
-                (iso(now), iso(now), len(jobs), iso(now), iso(now + timedelta(minutes=target["poll_interval_minutes"])), target["target_key"]),
+                (usa_active, iso(now), iso(now), len(jobs), iso(now), iso(now + timedelta(minutes=target["poll_interval_minutes"])), target["target_key"]),
             )
         return new_count, queued
 

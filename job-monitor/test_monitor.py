@@ -5,7 +5,7 @@ import unittest
 
 from database import Database, job_key, target_key
 from discord import DiscordClient
-from filters import canada_first, is_canadian_location, is_relevant_job
+from filters import canada_first, is_canadian_location, is_relevant_job, is_us_location
 from sources import Job
 from sources import ashby, greenhouse, lever, rippling, smartrecruiters, workable, workday
 
@@ -61,6 +61,14 @@ class FilterTests(unittest.TestCase):
             self.assertFalse(is_canadian_location(location), location)
         for location in ("Remote - Canada", "Toronto, ON / New York, NY", "Vaughan, Ontario", "London, ON"):
             self.assertTrue(is_canadian_location(location), location)
+
+
+    def test_us_detection(self):
+        for location in ("New York, NY", "Remote - United States", "San Francisco, California",
+                         "Austin, TX", "Seattle", "Boston, MA, USA"):
+            self.assertTrue(is_us_location(location), location)
+        for location in ("", "Remote", "Toronto, ON", "London, UK", "Remote in Germany", "Berlin"):
+            self.assertFalse(is_us_location(location), location)
 
 
 class DatabaseTests(unittest.TestCase):
@@ -122,6 +130,43 @@ class DatabaseTests(unittest.TestCase):
         self.db.record_failure(target, "x")
         target = self.db.all_targets()[0]
         self.assertEqual(2, target["failure_count"])
+
+
+    def test_usa_region_baselines_then_queues_to_usa_channel(self):
+        self.db.import_targets(self._catalog(), 5, 30)
+        target = self.db.all_targets()[0]
+        first_us = Job("us1", "WinterCo", "Software Intern", "New York, NY", "https://us1", "lever")
+        regions = {job_key(first_us): "usa"}
+        # First scan with USA active: the pre-existing US job is saved silently.
+        self.assertEqual((1, 0), self.db.record_success(target, [first_us], False, regions=regions, usa_active=True))
+        self.assertEqual(0, self.db.table_count("notifications"))
+        target = self.db.all_targets()[0]
+        self.assertEqual(1, target["usa_initialized"])
+        # Later scans queue new US jobs tagged with the usa region.
+        second_us = Job("us2", "WinterCo", "Developer Co-op", "Austin, TX", "https://us2", "lever")
+        regions = {job_key(second_us): "usa"}
+        self.assertEqual((1, 1), self.db.record_success(target, [second_us], False, regions=regions, usa_active=True))
+        row = self.db.pending_notifications()[0]
+        self.assertEqual(("usa", job_key(second_us)), (row["region"], row["job_key"]))
+
+    def test_usa_not_active_leaves_baseline_unset(self):
+        self.db.import_targets(self._catalog(), 5, 30)
+        target = self.db.all_targets()[0]
+        job = Job("one", "WinterCo", "Software Intern", "Toronto", "https://one", "lever")
+        self.db.record_success(target, [job], False)
+        target = self.db.all_targets()[0]
+        self.assertEqual(0, target["usa_initialized"])
+        self.assertEqual(1, target["initialized"])
+
+    def test_migration_adds_columns_to_existing_database(self):
+        self.db.import_targets(self._catalog(), 5, 30)
+        self.db.connection.execute("ALTER TABLE monitor_targets DROP COLUMN usa_initialized")
+        self.db.connection.execute("ALTER TABLE notifications DROP COLUMN region")
+        self.db.connection.commit()
+        self.db.close()
+        self.db = Database(self.root / "jobs.db")
+        target = self.db.all_targets()[0]
+        self.assertEqual(0, target["usa_initialized"])
 
 
 class AdapterTests(unittest.TestCase):

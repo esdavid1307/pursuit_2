@@ -7,8 +7,8 @@ from datetime import datetime
 import threading
 import time
 
-from database import Database
-from filters import canada_first, is_canadian_location, is_relevant_job
+from database import Database, job_key
+from filters import canada_first, is_canadian_location, is_relevant_job, is_us_location
 from sources import ashby, greenhouse, lever, rippling, smartrecruiters, workable, workday
 
 
@@ -31,10 +31,11 @@ class FetchResult:
 
 
 class Scheduler:
-    def __init__(self, db: Database, settings, discord_client):
+    def __init__(self, db: Database, settings, discord_client, usa_discord_client=None):
         self.db = db
         self.settings = settings
         self.discord = discord_client
+        self.usa_discord = usa_discord_client
         self._host_locks: dict[str, threading.Lock] = defaultdict(threading.Lock)
         self._active: set[str] = set()
         self._active_lock = threading.Lock()
@@ -77,16 +78,18 @@ class Scheduler:
     def deliver_pending(self) -> tuple[int, int]:
         sent = failed = 0
         for row in self.db.pending_notifications():
-            result = self.discord.send_job(row)
+            region = row["region"] or "canada"
+            client = self.usa_discord if region == "usa" and self.usa_discord else self.discord
+            result = client.send_job(row)
             if result.success:
                 self.db.notification_sent(row["job_key"])
                 sent += 1
-                print(f"Discord sent: {row['title']} - {row['company']}")
+                print(f"Discord sent [{region}]: {row['title']} - {row['company']}")
                 time.sleep(0.25)
             else:
                 self.db.notification_failed(row["job_key"], result.error, result.retry_after_seconds)
                 failed += 1
-                print(f"Discord pending: {row['title']} - {result.error}")
+                print(f"Discord pending [{region}]: {row['title']} - {result.error}")
         return sent, failed
 
     def run_due_scan(self) -> dict[str, int]:
@@ -105,15 +108,26 @@ class Scheduler:
                 print(f"{label}: ERROR ({failures} failures): {result.error}")
                 continue
             matches = [job for job in result.jobs if is_relevant_job(job.title)]
+            regions: dict[str, str] | None = None
             if self.settings.canada_only:
                 matches = [self._resolve_location(target, job) for job in matches]
-                matches = [job for job in matches if is_canadian_location(job.location)]
+                regions, kept = {}, []
+                for job in matches:
+                    if is_canadian_location(job.location):
+                        kept.append(job)
+                        regions[job_key(job)] = "canada"
+                    elif self.usa_discord and is_us_location(job.location):
+                        kept.append(job)
+                        regions[job_key(job)] = "usa"
+                matches = kept
             else:
                 matches = canada_first(matches)
             stats["matched"] += len(matches)
             was_initialized = bool(target["initialized"])
             new, queued = self.db.record_success(
-                target, matches, self.settings.send_existing_on_first_run
+                target, matches, self.settings.send_existing_on_first_run,
+                regions=regions, usa_active=self.usa_discord is not None,
+                usa_send_existing=self.settings.usa_send_existing_on_first_run,
             )
             stats["new"] += new
             stats["queued"] += queued
