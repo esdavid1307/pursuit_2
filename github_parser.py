@@ -266,6 +266,13 @@ class GitRepository:
             if self.shallow:
                 fetch_args.extend(["--depth", "1"])
             fetch_args.append("origin")
+            # clone --bare configures no fetch refspec, so a plain fetch only
+            # writes FETCH_HEAD; an explicit refspec is required to advance
+            # refs/heads/* past the commit captured at clone time.
+            if self.branch:
+                fetch_args.append(f"+refs/heads/{self.branch}:refs/heads/{self.branch}")
+            else:
+                fetch_args.append("+refs/heads/*:refs/heads/*")
             self._command(*fetch_args, cwd=self.mirror)
         else:
             clone_args = ["clone", "--bare", "--filter=blob:none"]
