@@ -7,7 +7,7 @@ from database import Database, job_key, target_key
 from discord import DiscordClient
 from filters import canada_first, is_canadian_location, is_relevant_job, is_us_location
 from sources import Job
-from sources import ashby, greenhouse, lever, rippling, smartrecruiters, workable, workday
+from sources import ashby, greenhouse, icims, lever, oracle, rippling, smartrecruiters, workable, workday
 
 
 class FakeResponse:
@@ -85,7 +85,7 @@ class DatabaseTests(unittest.TestCase):
         data = [{"company": "WinterCo", "recruiting_history": ["Winter 2027"], "ats_boards": [
                     {"ats": "lever", "ats_provider_known": True, "ats_identifier": "Acme", "ats_host": "jobs.lever.co", "ats_site": "Acme"},
                     {"ats": "lever", "ats_provider_known": True, "ats_identifier": "Acme", "ats_host": "jobs.lever.co", "ats_site": "Acme"},
-                    {"ats": "icims", "ats_provider_known": True, "ats_identifier": "x", "ats_host": "careers.icims.com", "ats_site": "x"},
+                    {"ats": "eightfold", "ats_provider_known": True, "ats_identifier": "x", "ats_host": "x.eightfold.ai", "ats_site": "x"},
                 ]}]
         path = self.root / "companies.json"
         path.write_text(json.dumps(data))
@@ -257,14 +257,62 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual("Montreal, Remote", jobs[1].location)
 
 
+def _icims_card(job_id: str, slug: str, title: str, location: str) -> str:
+    return f'''<li class="iCIMS_JobCardItem"><div class="row">
+<div class="col-xs-6 header left"><span class="sr-only field-label">Default: Location : Location</span>
+<span > {location}</span></div>
+<div class="col-xs-6 header right"><span class="sr-only field-label">Posted Date</span>
+<span title="8/27/2026 8:49 PM">3 days ago</span></div>
+<div class="col-xs-12 title"><a href="https://careers-acme.icims.com/jobs/{job_id}/{slug}/job?in_iframe=1" class="iCIMS_Anchor" title="{job_id} - {title}">
+<span class="sr-only field-label">Requisition Title</span><h3 >
+{title}</h3></a></div></div></li>'''
+
+
+class OracleIcimsAdapterTests(unittest.TestCase):
+    def test_oracle_paginates_and_joins_locations(self):
+        session = FakeSession([
+            FakeResponse({"items": [{"TotalJobsCount": 2, "requisitionList": [
+                {"Id": "19339", "Title": "Software Intern", "PostedDate": "2026-08-27",
+                 "PrimaryLocation": "Toronto, Ontario, Canada",
+                 "secondaryLocations": [{"Name": "Austin, TX, United States"}]}]}]}),
+            FakeResponse({"items": [{"TotalJobsCount": 2, "requisitionList": [
+                {"Id": "19400", "Title": "Developer Co-op", "PrimaryLocation": "Germany"}]}]}),
+        ])
+        target = {"company": "A", "ats_host": "ebwg.fa.us2.oraclecloud.com", "ats_identifier": "ebwg", "ats_site": "CX"}
+        jobs = oracle.fetch_jobs(target, 2, session)
+        self.assertEqual(2, len(jobs))
+        self.assertEqual("Toronto, Ontario, Canada, Austin, TX, United States", jobs[0].location)
+        self.assertEqual("https://ebwg.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX/job/19339", jobs[0].url)
+        self.assertIn("siteNumber=CX,limit=100,offset=0", session.calls[0][1])
+        self.assertIn("offset=1", session.calls[1][1])
+
+    def test_icims_parses_cards_and_stops_on_repeat_page(self):
+        page0 = _icims_card("18116", "software-intern", "Software Intern &amp; Co-op", "US-CA-Irvine") + \
+                _icims_card("18090", "dev-coop", "Developer Co-op", "CA-ON-Toronto")
+        session = FakeSession([FakeResponse(text=page0), FakeResponse(text=page0)])
+        jobs = icims.fetch_jobs({"company": "A", "ats_host": "careers-acme.icims.com"}, 2, session)
+        self.assertEqual(2, len(jobs))
+        self.assertEqual(("18116", "Software Intern & Co-op", "US-CA-Irvine",
+                          "https://careers-acme.icims.com/jobs/18116/software-intern/job", "8/27/2026 8:49 PM"),
+                         (jobs[0].source_job_id, jobs[0].title, jobs[0].location, jobs[0].url, jobs[0].posted_at))
+        self.assertEqual("CA-ON-Toronto", jobs[1].location)
+        self.assertEqual(2, len(session.calls))
+        self.assertIn("pr=0", session.calls[0][1])
+        self.assertIn("pr=1", session.calls[1][1])
+
+
 class TargetKeyTests(unittest.TestCase):
     def test_new_ats_supported(self):
-        for ats in ("ashby", "smartrecruiters", "workable", "rippling"):
+        for ats in ("ashby", "smartrecruiters", "workable", "rippling", "icims"):
             board = {"ats": ats, "ats_identifier": "Acme", "ats_host": "example.com", "ats_site": ""}
             self.assertEqual(f"{ats}:acme", target_key(board))
 
+    def test_oracle_keyed_on_host_and_site(self):
+        board = {"ats": "oracle", "ats_identifier": "ebwg", "ats_host": "ebwg.fa.us2.oraclecloud.com", "ats_site": "CX"}
+        self.assertEqual("oracle:ebwg.fa.us2.oraclecloud.com:cx", target_key(board))
+
     def test_unsupported_ats_rejected(self):
-        board = {"ats": "icims", "ats_identifier": "Acme", "ats_host": "careers.icims.com", "ats_site": "Acme"}
+        board = {"ats": "eightfold", "ats_identifier": "Acme", "ats_host": "acme.eightfold.ai", "ats_site": "Acme"}
         self.assertIsNone(target_key(board))
 
 

@@ -9,7 +9,7 @@ import time
 
 from database import Database, job_key
 from filters import canada_first, is_canadian_location, is_relevant_job, is_us_location
-from sources import ashby, greenhouse, lever, rippling, smartrecruiters, workable, workday
+from sources import ashby, greenhouse, icims, lever, oracle, rippling, smartrecruiters, workable, workday
 
 
 ADAPTERS = {
@@ -20,6 +20,8 @@ ADAPTERS = {
     "smartrecruiters": smartrecruiters.fetch_jobs,
     "workable": workable.fetch_jobs,
     "rippling": rippling.fetch_jobs,
+    "oracle": oracle.fetch_jobs,
+    "icims": icims.fetch_jobs,
 }
 
 
