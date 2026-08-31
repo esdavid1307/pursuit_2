@@ -5,3 +5,8 @@ __pycache__/
 .repo-cache/
 data/*
 !data/.gitkeep
+# Runtime artifacts must never be committed, wherever they land
+*.db
+*.db-shm
+*.db-wal
+*.log
