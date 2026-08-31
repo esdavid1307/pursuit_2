@@ -5,7 +5,7 @@ import re
 
 import requests
 
-from sources import Job, SourceError, request_text, target_value
+from monitor.sources import Job, SourceError, request_text, target_value
 
 
 MAX_PAGES = 20

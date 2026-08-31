@@ -7,7 +7,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 def _bool(name: str, default: bool) -> bool:
@@ -51,8 +51,8 @@ def load_settings() -> Settings:
         webhook_url=os.getenv("DISCORD_WEBHOOK_URL", "").strip(),
         usa_webhook_url=os.getenv("DISCORD_WEBHOOK_URL_USA", "").strip(),
         usa_send_existing_on_first_run=_bool("USA_SEND_EXISTING_ON_FIRST_RUN", False),
-        companies_json=_path("COMPANIES_JSON", "../companies.json"),
-        database_path=_path("DATABASE_PATH", "jobs.db"),
+        companies_json=_path("COMPANIES_JSON", "data/companies.json"),
+        database_path=_path("DATABASE_PATH", "data/jobs.db"),
         high_priority_interval_minutes=_int("HIGH_PRIORITY_INTERVAL_MINUTES", 5),
         normal_priority_interval_minutes=_int("NORMAL_PRIORITY_INTERVAL_MINUTES", 30),
         scheduler_wake_seconds=_int("SCHEDULER_WAKE_SECONDS", 60),

@@ -3,11 +3,11 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
-from database import Database, job_key, target_key
-from discord import DiscordClient
-from filters import canada_first, is_canadian_location, is_relevant_job, is_us_location
-from sources import Job
-from sources import ashby, greenhouse, icims, lever, oracle, rippling, smartrecruiters, workable, workday
+from monitor.database import Database, job_key, target_key
+from monitor.discord import DiscordClient
+from monitor.filters import canada_first, is_canadian_location, is_relevant_job, is_us_location
+from monitor.sources import Job
+from monitor.sources import ashby, greenhouse, icims, lever, oracle, rippling, smartrecruiters, workable, workday
 
 
 class FakeResponse:

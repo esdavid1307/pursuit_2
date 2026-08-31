@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import sqlite3
 
-from sources import Job
+from monitor.sources import Job
 
 
 SCHEMA = """

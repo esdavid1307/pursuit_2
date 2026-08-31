@@ -17,8 +17,7 @@ git clone https://github.com/esdavid1307/pursuit_2.git
 exit
 
 # 2. From your Mac: copy the secrets (never committed to git)
-scp ~/Desktop/pursuit_2/job-monitor/.env <user>@<vm-ip>:pursuit_2/job-monitor/.env
-scp ~/Desktop/pursuit_2/.env <user>@<vm-ip>:pursuit_2/.env   # optional GITHUB_TOKEN
+scp ~/Desktop/pursuit_2/.env <user>@<vm-ip>:pursuit_2/.env
 
 # 3. On the VM: run setup
 ssh <user>@<vm-ip>
@@ -29,7 +28,7 @@ bash pursuit_2/deploy/setup.sh
 (first run takes a while), installs two systemd units, and starts them:
 
 - `job-monitor.service` — the monitor, auto-restarts on crash and on reboot.
-- `catalog-refresh.timer` — daily at 08:00: `git pull`, rebuild `companies.json`,
+- `catalog-refresh.timer` — every 4 hours: `git pull`, rebuild `data/companies.json`,
   restart the monitor so new companies/code are picked up.
 
 ## Verify and manage
@@ -41,10 +40,3 @@ systemctl list-timers catalog-refresh*  # next refresh time
 sudo systemctl restart job-monitor      # manual restart
 ```
 
-## After the VM is confirmed working
-
-Turn off the Mac copy so you don't get duplicate Discord alerts:
-
-```bash
-~/Desktop/pursuit_2/job-monitor/launchd/uninstall.sh
-```

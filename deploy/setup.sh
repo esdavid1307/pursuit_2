@@ -6,22 +6,22 @@ set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 USER_NAME="$(id -un)"
 
-if [ ! -f "$REPO/job-monitor/.env" ]; then
-    echo "Missing $REPO/job-monitor/.env (it holds your Discord webhook)." >&2
+if [ ! -f "$REPO/.env" ]; then
+    echo "Missing $REPO/.env (it holds your Discord webhooks)." >&2
     echo "Copy it from your Mac first, e.g.:" >&2
-    echo "  scp ~/Desktop/pursuit_2/job-monitor/.env $USER_NAME@<vm-ip>:$REPO/job-monitor/.env" >&2
+    echo "  scp ~/Desktop/pursuit_2/.env $USER_NAME@<vm-ip>:$REPO/.env" >&2
     exit 1
 fi
 
 sudo apt-get update -y
 sudo apt-get install -y git python3 python3-venv python3-pip
 
-python3 -m venv "$REPO/job-monitor/.venv"
-"$REPO/job-monitor/.venv/bin/pip" install --quiet -r "$REPO/job-monitor/requirements.txt"
+python3 -m venv "$REPO/.venv"
+"$REPO/.venv/bin/pip" install --quiet -r "$REPO/requirements.txt"
 
-if [ ! -f "$REPO/companies.json" ]; then
+if [ ! -f "$REPO/data/companies.json" ]; then
     echo "Building company catalog (first run mines the source repos; this can take a while)..."
-    (cd "$REPO" && python3 main.py && python3 main.py --export)
+    (cd "$REPO" && .venv/bin/python -m catalog && .venv/bin/python -m catalog --export)
 fi
 
 for unit in job-monitor.service catalog-refresh.service catalog-refresh.timer; do

@@ -4,7 +4,7 @@ import re
 from urllib.parse import quote
 import requests
 
-from sources import Job, SourceError, request_json, target_value
+from monitor.sources import Job, SourceError, request_json, target_value
 
 
 PAGE_SIZE = 20

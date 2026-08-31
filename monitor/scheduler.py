@@ -7,9 +7,9 @@ from datetime import datetime
 import threading
 import time
 
-from database import Database, job_key
-from filters import canada_first, is_canadian_location, is_relevant_job, is_us_location
-from sources import ashby, greenhouse, icims, lever, oracle, rippling, smartrecruiters, workable, workday
+from monitor.database import Database, job_key
+from monitor.filters import canada_first, is_canadian_location, is_relevant_job, is_us_location
+from monitor.sources import ashby, greenhouse, icims, lever, oracle, rippling, smartrecruiters, workable, workday
 
 
 ADAPTERS = {

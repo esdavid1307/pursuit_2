@@ -3,9 +3,10 @@
 from pathlib import Path
 
 
-BASE_DIR = Path(__file__).resolve().parent
-DATABASE_PATH = BASE_DIR / "companies.db"
-EXPORT_PATH = BASE_DIR / "companies.json"
+BASE_DIR = Path(__file__).resolve().parent.parent
+DATA_DIR = BASE_DIR / "data"
+DATABASE_PATH = DATA_DIR / "companies.db"
+EXPORT_PATH = DATA_DIR / "companies.json"
 REPO_CACHE_DIR = BASE_DIR / ".repo-cache"
 
 REPOSITORIES = [

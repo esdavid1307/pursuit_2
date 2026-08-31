@@ -5,8 +5,8 @@ import json
 import re
 import sqlite3
 
-from ats_parser import ATSInfo, normalize_company_name
-from github_parser import Listing
+from catalog.ats_parser import ATSInfo, normalize_company_name
+from catalog.github_parser import Listing
 
 SCHEMA = """
 PRAGMA foreign_keys = ON;
@@ -54,6 +54,7 @@ def _name_score(name: str) -> tuple[int, int]:
 class Database:
     def __init__(self, path: Path):
         self.path = path
+        path.parent.mkdir(parents=True, exist_ok=True)
         self.connection = sqlite3.connect(path)
         self.connection.row_factory = sqlite3.Row
         self.connection.executescript(SCHEMA)
