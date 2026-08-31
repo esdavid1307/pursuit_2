@@ -3,9 +3,5 @@
 __pycache__/
 *.py[cod]
 .repo-cache/
-companies.db
-companies.db-journal
-companies.json
-jobs.db
-jobs.db-*
-job-monitor/logs/
+data/*
+!data/.gitkeep

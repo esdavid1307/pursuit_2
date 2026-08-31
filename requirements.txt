@@ -1,2 +1,2 @@
-# No third-party Python packages are required; Git history is read with the Git CLI.
-
+requests>=2.31,<3
+python-dotenv>=1.0,<2

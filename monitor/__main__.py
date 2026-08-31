@@ -3,10 +3,10 @@
 from argparse import ArgumentParser
 import sys
 
-from config import load_settings
-from database import Database
-from discord import DiscordClient
-from scheduler import Scheduler
+from monitor.config import load_settings
+from monitor.database import Database
+from monitor.discord import DiscordClient
+from monitor.scheduler import Scheduler
 
 
 def main() -> int:

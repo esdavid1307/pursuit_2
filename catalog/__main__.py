@@ -6,10 +6,10 @@ import os
 import subprocess
 import sys
 
-from ats_parser import parse_ats
-from config import BASE_DIR, DATABASE_PATH, EXPORT_PATH, GIT_TIMEOUT_SECONDS, REPOSITORIES, REPO_CACHE_DIR
-from database import Database
-from github_parser import GitRepository, load_dotenv, parse_markdown_tables
+from catalog.ats_parser import parse_ats
+from catalog.config import BASE_DIR, DATABASE_PATH, EXPORT_PATH, GIT_TIMEOUT_SECONDS, REPOSITORIES, REPO_CACHE_DIR
+from catalog.database import Database
+from catalog.github_parser import GitRepository, load_dotenv, parse_markdown_tables
 
 
 @dataclass

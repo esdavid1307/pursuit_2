@@ -1,44 +1,82 @@
-# Internship Company Discovery
+# Pursuit — internship discovery and alerting
 
-This local Python tool scans current and historical Markdown internship listings and builds a persistent SQLite catalog of companies and their ATS boards. History matters because repositories commonly replace live application links with `Closed` or remove old rows entirely.
+Two cooperating services that find Canadian (and optionally US) tech internships and alert them to Discord in near-real time:
 
-The initial configuration scans the Canadian Tech Internships repository and the active, inactive, off-season, and archived tables on the `dev` branch of `SimplifyJobs/Summer2027-Internships`. Both Markdown pipe tables and HTML tables are supported. It recognizes Greenhouse, Lever, Workday, Ashby, SmartRecruiters, Workable, Rippling, Oracle Recruiting, iCIMS, Jobvite, and Eightfold; every other valid job URL is retained as `unknown`.
+```
+┌──────────────────────┐   data/companies.json   ┌──────────────────────┐
+│  catalog/            │ ──────────────────────► │  monitor/            │
+│  the data miner      │                         │  the alerting service│
+│                      │                         │                      │
+│  mines two GitHub    │                         │  polls every ATS     │
+│  internship lists    │                         │  board directly      │
+│  → companies + their │                         │  every 5–30 min,     │
+│  ATS job boards      │                         │  filters titles +    │
+│  (SQLite catalog)    │                         │  locations, alerts   │
+└──────────────────────┘                         │  Discord webhooks    │
+   runs every 4h on the VM                       └──────────────────────┘
+   (catalog-refresh.timer)                          runs 24/7 on the VM
+                                                    (job-monitor.service)
+```
 
-The Canadian source replays every relevant commit. Simplify's bot-generated repository has tens of thousands of README commits and already preserves closed listings in dedicated files, so it uses `history_mode: "snapshot"`: all configured catalogs are scanned at the latest `dev` commit on first run and whenever that branch changes. This avoids millions of duplicate observations while retaining active, inactive, off-season, and archived listings.
-
-`--winter-history` performs a separate, idempotent scan of one daily `README-Off-Season.md` snapshot from July 1, 2025 through February 28, 2026. It only accepts rows explicitly tagged `Winter 2026`, and adds that evidence to each matching company's exported `recruiting_history` array.
+- **`catalog/`** scans current and historical Markdown listings from
+  `negarprh/Canadian-Tech-Internships-2027` and `SimplifyJobs/Summer2027-Internships`
+  (blob-filtered bare git mirrors in `.repo-cache/`), and maintains a SQLite catalog
+  (`data/companies.db`) of companies, their ATS boards, and recruiting history.
+  `--export` writes the compact contract file `data/companies.json`.
+- **`monitor/`** imports that file as scan targets and polls each company's live job
+  board through one adapter per provider (`monitor/sources/`): Greenhouse, Lever,
+  Workday, Ashby, SmartRecruiters, Workable, Rippling, Oracle Cloud, iCIMS.
+  New matching postings are queued durably in `data/jobs.db` and delivered to
+  Discord — Canadian jobs to `DISCORD_WEBHOOK_URL`, US jobs to `DISCORD_WEBHOOK_URL_USA`.
 
 ## Setup
 
-Python 3 and the `git` command are required. There are currently no third-party Python packages.
+Python 3.11+ and the `git` CLI.
 
 ```bash
 python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
+.venv/bin/pip install -r requirements.txt
+cp .env.example .env   # fill in the Discord webhook(s); GITHUB_TOKEN optional
 ```
-
-`GITHUB_TOKEN` is optional for public repositories. When provided, it is sent as an HTTPS authorization header and is never added to the clone URL.
 
 ## Run
 
 ```bash
-# First run, or an idempotent rescan of all history
-python main.py --full
+# Build/refresh the company catalog, then export the contract file
+.venv/bin/python -m catalog
+.venv/bin/python -m catalog --export
 
-# Fetch and process only commits after the saved repository head
-python main.py
+# Catalog extras: --full (rescan all history), --winter-history (mine tagged Winter 2026 rows)
 
-# Write the compact downstream catalog
-python main.py --export
-
-# Mine the completed July 2025-February 2026 cycle for tagged Winter 2026 roles
-python main.py --winter-history
+# Run the monitor
+.venv/bin/python -m monitor              # scan forever (what the VM runs)
+.venv/bin/python -m monitor --once       # one scan cycle
+.venv/bin/python -m monitor --validate   # fetch every board without alerting
+.venv/bin/python -m monitor --test-discord
 ```
 
-The reusable blob-filtered bare Git clones are stored in `.repo-cache/`, the database is `companies.db`, and export output is `companies.json`. Snapshot sources use shallow clones until a targeted historical command needs older commits. A rewritten upstream history automatically causes a safe full upsert scan.
+## Tests
 
-To add another source, append an entry containing `repo` and `files` to `REPOSITORIES` in `config.py`; no parser changes are needed.
+```bash
+.venv/bin/python -m unittest discover -s tests
+```
 
-The database separates canonical companies, their monitorable ATS boards, per-repository discovery provenance, raw job observations, and incremental sync checkpoints. Each observation retains the source table's explicit `terms` value when available. `companies.json` contains one object per company with an `ats_boards` array, recruiting history, and an explicit `ats_provider_known` tag. Unknown job boards are grouped by normalized company name and host, while every individual URL remains available in `job_observations`. Companies are never deleted merely because a listing disappears.
+## Layout
+
+```
+catalog/    GitHub-list miner (config.py lists the source repos; add a repo there, no parser changes needed)
+monitor/    ATS poller + Discord delivery (sources/ = one adapter per provider)
+tests/      test_catalog.py + test_monitor.py
+data/       runtime artifacts, never committed: companies.db, companies.json, jobs.db
+deploy/     systemd units + setup script for the GCP VM (see deploy/README.md)
+```
+
+## Behavior notes
+
+- Titles must contain an internship term and a software/tech term; with `CANADA_ONLY=true`
+  (default) locations must match Canada — or the US when the USA webhook is set.
+- A board's first-ever scan baselines existing jobs silently unless
+  `SEND_EXISTING_ON_FIRST_RUN=true` / `USA_SEND_EXISTING_ON_FIRST_RUN=true`
+  (enabled on the VM so newly discovered companies alert their current openings).
+  **Never rebuild `data/jobs.db` with these flags on** — every current job would flood the channels.
+- Notification delivery is rate-limit aware and retries failures with backoff.

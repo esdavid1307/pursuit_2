@@ -2,7 +2,7 @@
 
 import requests
 
-from sources import Job, SourceError, request_json, target_value
+from monitor.sources import Job, SourceError, request_json, target_value
 
 
 def fetch_jobs(target, timeout: int, session: requests.Session | None = None) -> list[Job]:

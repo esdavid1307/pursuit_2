@@ -3,9 +3,9 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
-from ats_parser import parse_ats
-from database import Database
-from github_parser import Listing, extract_apply_url, parse_markdown_tables
+from catalog.ats_parser import parse_ats
+from catalog.database import Database
+from catalog.github_parser import Listing, extract_apply_url, parse_markdown_tables
 
 
 class MarkdownTests(unittest.TestCase):
